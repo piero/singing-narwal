@@ -1,0 +1,15 @@
+{
+  "name": "narwal-score",
+  "title": "Narwal Score",
+  "id": "org.narwal.score",
+  "version": "0.1.0",
+  "size": "1280x800",
+  "backend": "tiny/backend/main.js",
+  "frontend": {
+    "build": "npm run build",
+    "dist": "dist",
+    "dev": "npm run dev",
+    "devUrl": "http://127.0.0.1:5173"
+  },
+  "fileExtensions": ["cho", "chordpro", "yaml", "odt"]
+}
