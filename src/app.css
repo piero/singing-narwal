@@ -8,7 +8,19 @@
   --accent: #2f6fde;
   --on-accent: #ffffff;
   --chord: #a3241b;
-  --chorus: #e9a23b;
+  /* Kinds of song sections and page elements: one hue each, used for borders, tints
+     and labels so the kinds are told apart at a glance. */
+  --chorus: #e09a2f;
+  --verse: #3a7fc8;
+  --bridge: #8b5cd6;
+  --note: #2f9a63;
+  --break: #7b8494;
+  --k-text: #3a7fc8;
+  --k-image: #2f9a63;
+  --k-box: #8b5cd6;
+  --k-lines: #e09a2f;
+  --k-space: #7b8494;
+  --k-rule: #1f9aa8;
   --chip-hover: rgba(0, 0, 0, 0.06);
   --line-focus: rgba(47, 111, 222, 0.05);
   color-scheme: light dark;
@@ -26,6 +38,17 @@
     --canvas: #121214;
     --accent: #4b8bf5;
     --chord: #ff8a7a;
+    --chorus: #f0b257;
+    --verse: #6aa8ee;
+    --bridge: #b292f5;
+    --note: #5cc68c;
+    --break: #9aa3b2;
+    --k-text: #6aa8ee;
+    --k-image: #5cc68c;
+    --k-box: #b292f5;
+    --k-lines: #f0b257;
+    --k-space: #9aa3b2;
+    --k-rule: #4cc4d2;
     --chip-hover: rgba(255, 255, 255, 0.08);
     --line-focus: rgba(75, 139, 245, 0.08);
   }
@@ -74,4 +97,19 @@ label {
 
 code {
   font: 12px ui-monospace, Menlo, monospace;
+}
+
+/* A button tinted with the hue of its kind: set --k on it (or a parent). */
+button.tinted {
+  border: 1px solid color-mix(in srgb, var(--k) 55%, var(--line));
+  background: color-mix(in srgb, var(--k) 12%, var(--bg));
+  color: var(--fg);
+}
+button.tinted:hover {
+  background: color-mix(in srgb, var(--k) 24%, var(--bg));
+}
+button.tinted.active {
+  background: color-mix(in srgb, var(--k) 38%, var(--bg));
+  border-color: var(--k);
+  box-shadow: inset 0 0 0 1px var(--k);
 }

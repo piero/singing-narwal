@@ -170,7 +170,7 @@
         <ol class="elements">
           {#each tpl.elements as e, i (i)}
             {@const kind = elementKind(e)}
-            <li>
+            <li style:--k="var(--k-{kind})">
               <header>
                 <strong>{kindLabel(kind)}</strong>
                 <span class="actions">
@@ -228,7 +228,7 @@
         <div class="add">
           <span>{t('page.add')}</span>
           {#each KINDS as k (k.kind)}
-            <button onclick={() => tpl!.elements.push(k.make())}>{t(k.label)}</button>
+            <button class="tinted" style:--k="var(--k-{k.kind})" onclick={() => tpl!.elements.push(k.make())}>{t(k.label)}</button>
           {/each}
         </div>
         <p class="help">{t('page.placeholders')}</p>
@@ -293,16 +293,22 @@
     flex-direction: column;
     gap: 8px;
   }
+  /* Each kind of element has its own hue (see app.css): a stripe on the card and a
+     tinted header, matching the Add buttons. */
   .elements li {
     border: 1px solid var(--line);
+    border-left: 4px solid var(--k);
     border-radius: 6px;
-    padding: 8px 10px;
+    padding: 0 10px 8px;
   }
   header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 6px;
+    margin: 0 -10px 8px;
+    padding: 5px 10px;
+    border-radius: 0 5px 0 0;
+    background: color-mix(in srgb, var(--k) 12%, var(--bg));
   }
   .actions button {
     border: none;

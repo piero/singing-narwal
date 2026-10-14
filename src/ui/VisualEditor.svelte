@@ -515,16 +515,16 @@
 <div class="toolbar" role="toolbar" aria-label={t('sec.toolbar')}>
   <span class="group">
     {#each ['chorus', 'verse', 'bridge'] as env (env)}
-      <button class:active={currentEnv === env} class="env-{env}" title={t(currentEnv === env ? 'sec.unwrapHelp' : 'sec.wrapHelp', { name: t(ENV_LABEL[env]) })} onmousedown={(e) => e.preventDefault()} onclick={() => toggleSection(env)}>{t(ENV_LABEL[env])}</button>
+      <button class:active={currentEnv === env} class="tinted" style:--k="var(--{env})" title={t(currentEnv === env ? 'sec.unwrapHelp' : 'sec.wrapHelp', { name: t(ENV_LABEL[env]) })} onmousedown={(e) => e.preventDefault()} onclick={() => toggleSection(env)}>{t(ENV_LABEL[env])}</button>
     {/each}
   </span>
   <span class="group">
-    <button title={t('sec.repeatHelp')} onmousedown={(e) => e.preventDefault()} onclick={() => insertAfter({ kind: 'directive', name: 'chorus', value: '' })}>↻ {t('sec.repeat')}</button>
-    <button title={t('sec.noteHelp')} onmousedown={(e) => e.preventDefault()} onclick={insertNote}>✎ {t('sec.note')}</button>
+    <button class="tinted" style:--k="var(--chorus)" title={t('sec.repeatHelp')} onmousedown={(e) => e.preventDefault()} onclick={() => insertAfter({ kind: 'directive', name: 'chorus', value: '' })}>↻ {t('sec.repeat')}</button>
+    <button class="tinted" style:--k="var(--note)" title={t('sec.noteHelp')} onmousedown={(e) => e.preventDefault()} onclick={insertNote}>✎ {t('sec.note')}</button>
   </span>
   <span class="group">
-    <button title={t('sec.colbHelp')} onmousedown={(e) => e.preventDefault()} onclick={() => insertBreak(false)}>⇥ {t('sec.colb')}</button>
-    <button title={t('sec.pageHelp')} onmousedown={(e) => e.preventDefault()} onclick={() => insertBreak(true)}>⤓ {t('sec.page')}</button>
+    <button class="tinted" style:--k="var(--break)" title={t('sec.colbHelp')} onmousedown={(e) => e.preventDefault()} onclick={() => insertBreak(false)}>⇥ {t('sec.colb')}</button>
+    <button class="tinted" style:--k="var(--break)" title={t('sec.pageHelp')} onmousedown={(e) => e.preventDefault()} onclick={() => insertBreak(true)}>⤓ {t('sec.page')}</button>
   </span>
 </div>
 
@@ -639,23 +639,9 @@
     gap: 4px;
   }
   .toolbar button {
-    border: 1px solid var(--line);
-    background: var(--bg);
-    color: var(--fg);
     border-radius: 5px;
     padding: 2px 9px;
     cursor: pointer;
-  }
-  .toolbar button:hover {
-    background: var(--chip-hover);
-  }
-  .toolbar button.active {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: var(--on-accent);
-  }
-  .toolbar button.env-chorus:not(.active) {
-    border-left: 3px solid var(--chorus);
   }
   .marker {
     display: flex;
@@ -676,8 +662,22 @@
     font-weight: 600;
     white-space: nowrap;
   }
-  .marker.env-chorus .tag {
+  /* Marker labels take the hue of their kind, like the toolbar buttons. */
+  .marker.env-chorus .tag,
+  .marker.repeat .tag {
     color: var(--chorus);
+  }
+  .marker.env-verse .tag {
+    color: var(--verse);
+  }
+  .marker.env-bridge .tag {
+    color: var(--bridge);
+  }
+  .marker.note .tag {
+    color: var(--note);
+  }
+  .marker.break .tag {
+    color: var(--break);
   }
   .marker .tag.end {
     font-weight: 400;
@@ -738,9 +738,11 @@
   .line.env-chorus {
     border-left-color: var(--chorus);
   }
-  .line.env-bridge,
   .line.env-verse {
-    border-left-color: var(--line);
+    border-left-color: var(--verse);
+  }
+  .line.env-bridge {
+    border-left-color: var(--bridge);
   }
   .chordrow {
     position: relative;
