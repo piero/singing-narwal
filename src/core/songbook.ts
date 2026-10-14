@@ -15,7 +15,7 @@
 import YAML from 'yaml';
 import { parseSong } from './chordpro';
 import type { Notation } from './chords';
-import type { FontRegistry } from './fonts';
+import { fontIdForFile, isFontFile, type FontRegistry } from './fonts';
 import { PAGE_SIZES, impose, type ImpositionKind, type PageSizeName, type Sheet } from './impose';
 import { DEFAULT_STYLE, layoutSong, type Columns, type LaidPage, type SongStyle, type TextItem } from './layout';
 import { imageSize } from './images';
@@ -293,4 +293,48 @@ export async function buildSongbook(book: Songbook, fonts: FontRegistry, loader:
   });
   const sheets = impose(pages, { kind: book.imposition, foldLine: book.foldLine });
   return { pages, sheets, index: pass.index, warnings };
+}
+
+/** Resolve a path written in a songbook (relative to the songbook's folder) to a workspace path. */
+export function resolveBookPath(bookPath: string, p: string): string {
+  const dir = bookPath.includes('/') ? bookPath.slice(0, bookPath.lastIndexOf('/') + 1) : '';
+  const out: string[] = [];
+  for (const part of (dir + p).split('/')) part === '..' ? out.pop() : part !== '.' && out.push(part);
+  return out.join('/');
+}
+
+/**
+ * The workspace files a songbook needs: the songbook itself, its songs and pages, the
+ * images it or its pages show, and the workspace fonts (fonts/) its style or pages use.
+ * Paths that the songbook lists but the workspace lacks are returned as `missing`.
+ */
+export async function songbookFiles(
+  bookPath: string,
+  workspaceFiles: string[],
+  readText: (p: string) => Promise<string>,
+): Promise<{ files: string[]; missing: string[] }> {
+  const have = new Set(workspaceFiles);
+  const files = new Set<string>([bookPath]);
+  const missing = new Set<string>();
+  const fontIds = new Set<string>();
+  const want = (p: string) => (have.has(p) ? files.add(p) : missing.add(p));
+
+  const book = parseSongbook(await readText(bookPath));
+  for (const s of Object.values(book.style)) if (s && typeof s === 'object' && 'font' in s) fontIds.add(String(s.font));
+  for (const item of book.contents) {
+    if (typeof item !== 'object') continue;
+    if ('song' in item) want(resolveBookPath(bookPath, item.song));
+    else if ('image' in item) want(resolveBookPath(bookPath, item.image));
+    else if ('page' in item) {
+      const p = resolveBookPath(bookPath, item.page);
+      want(p);
+      if (!have.has(p)) continue;
+      // Paths inside a page are relative to the songbook too (pages are read through its loader).
+      const page = parsePage(await readText(p));
+      for (const src of pageImages(page)) want(resolveBookPath(bookPath, src));
+      for (const el of page.elements) if ('font' in el && el.font) fontIds.add(el.font);
+    }
+  }
+  for (const f of workspaceFiles) if (isFontFile(f) && fontIds.has(fontIdForFile(f))) files.add(f);
+  return { files: [...files], missing: [...missing] };
 }

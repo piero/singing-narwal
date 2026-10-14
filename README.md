@@ -102,6 +102,7 @@ Pages and songs can be shared by several songbooks: editing one changes it every
 |---|---|
 | print | **Export PDF** (a song or a songbook) |
 | send one song, songbook or page | ⋯ menu next to it → **Save a copy as…** (`.cho`, `.songbook.yaml`, `.page.yaml`, or the image) |
+| send or move one songbook with everything it uses (songs, pages, images, fonts) | **Download as .zip** in the songbook, or ⋯ menu next to it; the receiver uses **Open a .zip…** |
 | back up everything, or move it to another computer or browser | **Download all (.zip)**, then **Open a .zip…** to restore it |
 | move from the browser to a folder | **Save all to folder…** (desktop app, Chrome, Edge): copies everything and keeps working there |
 

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
-  import { debouncedSaver } from './saves';
+  import { debouncedSaver, settleSaves } from './saves';
   import { getMeta, parseSong } from '../core/chordpro';
   import type { FontRegistry } from '../core/fonts';
   import { impose, PAGE_SIZES } from '../core/impose';
@@ -9,7 +9,7 @@
   import { ImageUrls } from './assets.svelte';
   import { i18n, t, type Key } from './i18n.svelte';
   import Preview from './Preview.svelte';
-  import { importImage, isImage, isPage, isSong, saveFile, type Workspace } from './workspace';
+  import { importImage, isImage, isPage, isSong, saveFile, zipSongbook, type Workspace } from './workspace';
 
   let {
     workspace,
@@ -147,6 +147,14 @@
     const pdf = await renderPdf(built.sheets, fonts, { title: book.title, creator: __APP_NAME__, loadImage: loader.readBytes });
     await saveFile(`${path.split('/').pop()!.replace(/\.songbook\.ya?ml$/i, '')}.pdf`, pdf, 'application/pdf');
   }
+
+  /** This songbook with its songs, pages, images and fonts, to move or share it. */
+  async function exportZip() {
+    await settleSaves();
+    const { zip, missing } = await zipSongbook(workspace, path);
+    if ((await saveFile(`${path.split('/').pop()!.replace(/\.songbook\.ya?ml$/i, '')}.zip`, zip, 'application/zip')) && missing.length)
+      status = t('book.zipMissing', { files: missing.join(', ') });
+  }
 </script>
 
 {#if book}
@@ -249,6 +257,7 @@
         <label><input type="radio" bind:group={view} value="pages" /> {t('book.pages')}</label>
         {#if built}<span class="info">{t('book.info', { pages: built.pages.length, sheets: built.sheets.length })}{book.imposition === 'booklet' ? t('book.duplex') : ''}</span>{/if}
         <span class="status">{status}</span>
+        <button onclick={exportZip} title={t('book.zipHelp')}>{t('book.zip')}</button>
         <button class="primary" onclick={exportPdf} disabled={!built}>{t('opt.exportPdf')}</button>
       </div>
       <div class="preview-scroll">

@@ -27,6 +27,7 @@
     pickLocalFiles,
     saveFile,
     tiny,
+    zipSongbook,
     zipWorkspace,
     type Workspace,
   } from './ui/workspace';
@@ -202,6 +203,18 @@
       notice = t('ws.zipDone', { n: entries.length, name: zip.name });
       return { from: '', to: null };
     });
+  }
+
+  async function downloadBookZip(path: string) {
+    menu = null;
+    try {
+      await settleSaves();
+      const { zip, missing } = await zipSongbook(workspace, path);
+      const name = path.split('/').pop()!.replace(/\.songbook\.ya?ml$/i, '');
+      if ((await saveFile(`${name}.zip`, zip, 'application/zip')) && missing.length) error = t('book.zipMissing', { files: missing.join(', ') });
+    } catch (e) {
+      error = t('error.op', { msg: (e as Error).message });
+    }
   }
 
   async function saveCopy(path: string) {
@@ -433,6 +446,9 @@
   <div class="menu" role="menu" style="left: {m.x}px; top: {m.y}px">
     <button role="menuitem" onclick={() => rename(m.path)}>{t('menu.rename')}</button>
     <button role="menuitem" onclick={() => saveCopy(m.path)}>{t('menu.saveAs')}</button>
+    {#if isSongbook(m.path)}
+      <button role="menuitem" onclick={() => downloadBookZip(m.path)}>{t('book.zip')}</button>
+    {/if}
     <button role="menuitem" class="danger" onclick={() => remove(m.path)}>{t('menu.delete')}</button>
   </div>
 {/if}

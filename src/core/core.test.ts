@@ -7,6 +7,7 @@ import { FontRegistry, BUNDLED_FONTS } from './fonts';
 import { bookletOrder } from './impose';
 import { convertNotation, songNotation, transposeSong } from './transform';
 import { DEFAULT_STYLE, isInlineChordLine, layoutSong, structure } from './layout';
+import { resolveBookPath, songbookFiles } from './songbook';
 
 const it_ = (notation: 'italian' | 'english', transpose = 0) => ({ notation, transpose });
 
@@ -153,5 +154,29 @@ describe('song transforms', () => {
   it('prints chords as written by default', () => {
     expect(renderChord('LA-', { notation: 'original', transpose: 0 })).toBe('LA-');
     expect(renderChord('La-', { notation: 'original', transpose: 2 })).toBe('Si-');
+  });
+});
+
+describe('songbook files', () => {
+  it('lists the files a songbook uses, and the ones missing', async () => {
+    const ws: Record<string, string> = {
+      'book.songbook.yaml': 'title: B\ncontents:\n  - page: pages/cover.page.yaml\n  - song: songs/a.cho\n  - song: songs/gone.cho\n  - image: images/full.jpg\n  - blank\n',
+      'pages/cover.page.yaml': 'elements:\n  - text: Hi\n    font: Fancy-Regular\n  - image: images/logo.png\n',
+      'songs/a.cho': '{title: A}',
+      'songs/other.cho': '{title: Other}',
+      'images/logo.png': '',
+      'images/full.jpg': '',
+      'images/unused.png': '',
+      'fonts/Fancy-Regular.ttf': '',
+      'fonts/Unused-Regular.ttf': '',
+    };
+    const r = await songbookFiles('book.songbook.yaml', Object.keys(ws), async (p) => ws[p]);
+    expect(r.files.sort()).toEqual(['book.songbook.yaml', 'fonts/Fancy-Regular.ttf', 'images/full.jpg', 'images/logo.png', 'pages/cover.page.yaml', 'songs/a.cho']);
+    expect(r.missing).toEqual(['songs/gone.cho']);
+  });
+
+  it('resolves paths relative to the songbook', () => {
+    expect(resolveBookPath('books/x.songbook.yaml', '../songs/a.cho')).toBe('songs/a.cho');
+    expect(resolveBookPath('books/x.songbook.yaml', 'local.cho')).toBe('books/local.cho');
   });
 });

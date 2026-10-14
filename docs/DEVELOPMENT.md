@@ -213,7 +213,7 @@ like the rest of the project.
       `.zip`; failed saves reported.
 - [x] Desktop app starts in `~/Documents/SingingNarwal` or the last folder used.
 - [x] Rename and delete files, keeping songbooks consistent; save a copy of any file;
-      download the workspace as a `.zip`.
+      download the workspace, or one songbook with the files it uses, as a `.zip`.
 - [x] English and Italian interface; GPL-3.0-or-later.
 
 ### Next

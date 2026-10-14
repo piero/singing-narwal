@@ -7,7 +7,7 @@
 
 import { unzipSync, zipSync } from 'fflate';
 import { isFontFile } from '../core/fonts';
-import type { FileLoader } from '../core/songbook';
+import { songbookFiles, type FileLoader } from '../core/songbook';
 import { t } from './i18n.svelte';
 import { idbDelete, idbEntries, idbGet, idbPut, idbPutAll, openDb } from './idb';
 
@@ -514,6 +514,17 @@ export async function zipWorkspace(ws: Workspace): Promise<Uint8Array> {
   const entries: Record<string, Uint8Array> = {};
   for (const f of await ws.list()) entries[f] = await ws.readBytes(f);
   return zipSync(entries);
+}
+
+/**
+ * One songbook and the files it uses, zipped with their workspace paths (so "Open a .zip…"
+ * puts them back in place). `missing`: files the songbook lists but the workspace lacks.
+ */
+export async function zipSongbook(ws: Workspace, path: string): Promise<{ zip: Uint8Array; missing: string[] }> {
+  const { files, missing } = await songbookFiles(path, await ws.list(), (p) => ws.readText(p));
+  const entries: Record<string, Uint8Array> = {};
+  for (const f of files) entries[f] = await ws.readBytes(f);
+  return { zip: zipSync(entries), missing };
 }
 
 /** Pick a folder on disk to work in, or null if cancelled / not supported. */
