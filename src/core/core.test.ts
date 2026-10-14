@@ -120,11 +120,17 @@ describe('layout', () => {
     expect(r.columns).toBe(2);
   });
 
-  it('lays out the example songs on one page', () => {
-    for (const f of ['strade-di-coraggio.cho', 'aquile-randagie.cho']) {
-      const doc = parseSong(readFileSync(join(__dirname, '../../examples/songs', f), 'utf8'));
-      expect(layoutSong(doc, fonts, DEFAULT_STYLE, opts).pages.length).toBe(1);
-    }
+  it('lays out a typical song on one page', () => {
+    // Amazing Grace (John Newton, 1779): public domain.
+    const verses = [
+      'A[G]mazing grace, how [C]sweet the [G]sound\nThat saved a wretch like [D]me\nI [G]once was lost, but [C]now am [G]found\nWas blind, but [D]now I [G]see',
+      "'Twas [G]grace that taught my [C]heart to [G]fear\nAnd grace my fears re[D]lieved\nHow [G]precious did that [C]grace ap[G]pear\nThe hour I [D]first be[G]lieved",
+      'Through [G]many dangers, [C]toils and [G]snares\nI have already [D]come\n\'Tis [G]grace hath brought me [C]safe thus [G]far\nAnd grace will [D]lead me [G]home',
+      'The [G]Lord has promised [C]good to [G]me\nHis word my hope se[D]cures\nHe [G]will my shield and [C]portion [G]be\nAs long as [D]life en[G]dures',
+      'When [G]we\'ve been there ten [C]thousand [G]years\nBright shining as the [D]sun\nWe\'ve [G]no less days to [C]sing God\'s [G]praise\nThan when we\'d [D]first be[G]gun',
+    ];
+    const doc = parseSong(`{title: Amazing Grace}\n{artist: John Newton}\n\n${verses.join('\n\n')}\n`);
+    expect(layoutSong(doc, fonts, DEFAULT_STYLE, opts).pages.length).toBe(1);
   });
 });
 

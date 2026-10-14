@@ -25,3 +25,6 @@ dist-ssr
 
 # TinyJS build output
 .build
+
+# Local test material (may contain copyrighted lyrics); nothing depends on it
+examples/

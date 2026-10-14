@@ -128,5 +128,4 @@ shows the date of your last backup and warns when something changed since.
 ## Licence
 
 Singing Narwal is free software under the [GNU General Public License v3.0 or later](LICENSE).
-Songbooks you make with it are yours and are not covered by the GPL. The example songs in
-`examples/` are for local testing only: most lyrics are copyrighted.
+Songbooks you make with it are yours and are not covered by the GPL.

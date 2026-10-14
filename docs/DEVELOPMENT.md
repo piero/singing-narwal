@@ -15,8 +15,9 @@ npm install
 npm run dev          # web app on http://127.0.0.1:5173, with hot reload
 ```
 
-The web app starts in browser storage, pre-filled with the songs in `examples/`. In
-Chrome or Edge, **Open folder…** lets you work on a real folder instead.
+The web app starts with an empty workspace in browser storage. To work on test material,
+use **Open folder…** (Chrome, Edge) on a folder of songs, or **Import…** them.
+Keep your own local test songs in an `examples/` directory if you like; nothing in the code or the tests depends on it (`examples/` is ignored by Git).
 
 | Command | What it does |
 |---|---|
@@ -30,8 +31,8 @@ Chrome or Edge, **Open folder…** lets you work on a real folder instead.
 ### Command line
 
 ```sh
-npm run cli -- examples/songs/aquile-randagie.cho -o song.pdf
-npm run cli -- examples/canzoniere.songbook.yaml -o book.pdf
+npm run cli -- songs/amazing-grace.cho -o song.pdf
+npm run cli -- canzoniere.songbook.yaml -o book.pdf
 npm run cli -- import ~/Documents/Canzoniere/*.odt -o songs/
 ```
 
@@ -96,7 +97,6 @@ tiny/backend/main.js       TinyJS backend: file access on disk
 public/fonts/              bundled Liberation fonts (also read by the CLI)
 public/narwal-logo-256.png logo for the web page (favicon, sidebar, welcome screen)
 assets/narwal-logo.png     logo master; the desktop app's icon (tinyjs.json "icon")
-examples/                  sample workspace used to seed browser storage (test content)
 docs/                      technical overview and this guide
 ```
 
@@ -149,7 +149,7 @@ npm test && npm run check && npm run build
 
 ## Contributing
 
-Contributions are welcome, from code to translations to example songs.
+Contributions are welcome, from code to translations.
 
 1. Open an issue to discuss bigger changes before writing code.
 2. Fork, create a branch, make the change with tests, and check it as described above.
@@ -158,7 +158,7 @@ Contributions are welcome, from code to translations to example songs.
 By contributing you agree that your contribution is licensed under the GPL-3.0-or-later,
 like the rest of the project.
 
-- **Song lyrics:** do not commit copyrighted lyrics. Example songs must be in the public
+- **Song lyrics:** do not commit copyrighted lyrics. Songs in tests or docs must be in the public
   domain or under a licence that allows redistribution.
 - **Translations:** a new interface language means a new dictionary in
   `src/ui/i18n.svelte.ts` and an entry in `LANGS`.
@@ -225,4 +225,3 @@ like the rest of the project.
 - [ ] Booklet options: cover from a PDF, sections with their own index.
 - [ ] Import: split documents containing several songs; `.docx` directly.
 - [ ] Transpose `add` notes inside suffixes (e.g. `F#(addB)`).
-- [ ] Replace the example songs with public-domain ones before publishing.

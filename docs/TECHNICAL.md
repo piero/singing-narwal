@@ -234,13 +234,13 @@ to the workspace root with `/` separators.
 |---|---|---|---|
 | `TinyWorkspace` | desktop app | a folder on disk | each call goes to `tiny/backend/main.js` over TinyJS's RPC (`tiny.api.call`); paths containing `..` are refused |
 | `BrowserFolderWorkspace` | website in Chrome/Edge | a folder on disk | File System Access API (`showDirectoryPicker`); needs HTTPS or localhost |
-| `BrowserWorkspace` | website, by default | IndexedDB | seeded with `examples/` on first use |
+| `BrowserWorkspace` | website, by default | IndexedDB | empty on first use |
 | `NoWorkspace` | startup | nowhere | placeholder until the real workspace is open; refuses writes |
 
 ### Browser storage (IndexedDB)
 
 - Database `narwal-db` (`src/ui/idb.ts`) with two stores: `files` (path → bytes) and
-  `meta` (backup times, the remembered folder handle, a "seeded" flag).
+  `meta` (backup times, the remembered folder handle, a "seeded" flag marking that the one-time setup ran).
 - All files are loaded into memory when the workspace opens; reads are served from
   memory. A write resolves only after the IndexedDB transaction commits, and **throws** if
   the browser refuses it, so the app never reports a failed save as saved.

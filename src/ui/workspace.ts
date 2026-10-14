@@ -3,7 +3,7 @@
 //
 // - TinyJS (desktop app): real folder on disk, through the app backend.
 // - Browser folder: File System Access API (Chromium browsers only).
-// - Browser: in the browser's storage (IndexedDB), seeded with the bundled examples.
+// - Browser: in the browser's storage (IndexedDB), empty on first use.
 
 import { unzipSync, zipSync } from 'fflate';
 import { isFontFile } from '../core/fonts';
@@ -45,7 +45,6 @@ function fromBase64(s: string): Uint8Array {
 
 // --- Browser workspace (IndexedDB) ------------------------------------------
 
-const examples = import.meta.glob('../../examples/**/*.{cho,yaml}', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
 // Earlier versions kept files in localStorage; they are moved to IndexedDB once.
 const LEGACY_FILE = 'narwal:file:';
 const LEGACY_DELETED = 'narwal:deleted:';
@@ -78,10 +77,6 @@ function legacyFiles(): Map<string, Uint8Array> | null {
     return null;
   }
   if (!found) return null;
-  for (const [k, v] of Object.entries(examples)) {
-    const p = k.replace('../../examples/', '');
-    if (!files.has(p)) files.set(p, new TextEncoder().encode(v));
-  }
   for (const p of deleted) files.delete(p);
   return files;
 }
@@ -97,7 +92,7 @@ function clearLegacy() {
 }
 
 /**
- * Files kept in the browser (IndexedDB), seeded with the bundled examples on first use.
+ * Files kept in the browser (IndexedDB); empty on first use.
  * Writes resolve only once stored, and throw if the browser refuses them (e.g. no space).
  * Without IndexedDB, files live in memory only (`persistent` is false).
  */
@@ -123,12 +118,10 @@ export class BrowserWorkspace implements Workspace {
   static async open(): Promise<BrowserWorkspace> {
     const db = await openDb();
     if (!db) {
-      const files = legacyFiles() ?? new Map(Object.entries(examples).map(([k, v]) => [k.replace('../../examples/', ''), new TextEncoder().encode(v)]));
-      return new BrowserWorkspace(null, files);
+      return new BrowserWorkspace(null, legacyFiles() ?? new Map());
     }
     if (!(await idbGet(db, 'meta', 'seeded'))) {
-      const files = legacyFiles() ?? new Map(Object.entries(examples).map(([k, v]) => [k.replace('../../examples/', ''), new TextEncoder().encode(v)]));
-      await idbPutAll(db, 'files', [...files]);
+      await idbPutAll(db, 'files', [...(legacyFiles() ?? [])]);
       await idbPut(db, 'meta', 'seeded', true);
       clearLegacy();
     }
