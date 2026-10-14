@@ -37,7 +37,34 @@ function fromBase64(s) {
   return out;
 }
 
+// App settings (the last folder used), outside the browser engine's storage.
+function home() {
+  return tjs.homeDir ?? tjs.env?.HOME ?? tjs.getenv?.('HOME');
+}
+const configFile = () => `${home()}/Library/Application Support/Narwal Score/config.json`;
+
+const isDir = (path) => tjs.stat(path).then((s) => s.isDirectory, () => false);
+
 export const api = {
+  getConfig: async () => {
+    try {
+      return JSON.parse(await tjs.readFile(configFile(), 'utf8'));
+    } catch {
+      return {};
+    }
+  },
+  setConfig: async ({ config }) => {
+    const file = configFile();
+    await ensureParent(file);
+    await tjs.writeFile(file, JSON.stringify(config, null, 2));
+  },
+  isDir: async ({ path }) => isDir(path),
+  // Default workspace on first launch: ~/Documents/Narwal Score.
+  defaultFolder: async () => {
+    const dir = `${home()}/Documents/Narwal Score`;
+    await tjs.makeDir(dir, { recursive: true });
+    return dir;
+  },
   list: async ({ dir }) => (await walk(dir, '', [])).sort(),
   readText: async ({ dir, path }) => tjs.readFile(resolve(dir, path), 'utf8'),
   readBase64: async ({ dir, path }) => toBase64(await tjs.readFile(resolve(dir, path))),

@@ -6,7 +6,7 @@ import { parseSong, serializeSong } from './chordpro';
 import { FontRegistry, BUNDLED_FONTS } from './fonts';
 import { bookletOrder } from './impose';
 import { convertNotation, songNotation, transposeSong } from './transform';
-import { DEFAULT_STYLE, layoutSong, structure } from './layout';
+import { DEFAULT_STYLE, isInlineChordLine, layoutSong, structure } from './layout';
 
 const it_ = (notation: 'italian' | 'english', transpose = 0) => ({ notation, transpose });
 
@@ -70,6 +70,18 @@ Intro: [C] [G] (2x)
     expect(serializeSong(parseSong(out))).toBe(out);
     expect(out).toContain('Hel[C]lo [G7]world');
     expect(out).toContain('# comment');
+  });
+
+  it('prints only instrumental lines with inline chords', () => {
+    const inline = (src: string) => {
+      const l = parseSong(src).lines[0];
+      return l.kind === 'lyrics' && isInlineChordLine(l.text, l.chords);
+    };
+    expect(inline('Intro: [C] [G] (2x)')).toBe(true);
+    expect(inline('[Do] [Sol] [La-] | [Fa] x2')).toBe(true);
+    expect(inline('Strumentale [Re] [La] (ripetere 2 volte)')).toBe(true);
+    expect(inline('    [Re]       asdasda')).toBe(false);
+    expect(inline('Hel[C]lo world')).toBe(false);
   });
 
   it('builds paragraphs and chorus references', () => {

@@ -287,10 +287,22 @@ function chordText(ctx: Ctx, chord: string) {
   return renderChord(chord, { notation: ctx.opts.notation, transpose: ctx.opts.transpose, spelling: ctx.spelling });
 }
 
-/** Instrumental lines ("Intro: [C] [G] (2x)") have chords not attached to any letter. */
-function isInlineChordLine(text: string, chords: ChordAnchor[]): boolean {
+// Words allowed around the chords of an instrumental line, besides a "Label:" and (notes).
+const SECTION_WORD = /^(intro|outro|solo|strumentale|instrumental|finale|coda|interludio|interlude|bridge|ponte|rit\.?|ritornello|chorus|verse|strofa)$/i;
+const MUSIC_SYMBOL = /^(x?\d+x?|[|/%.\-–…:]+)$/i;
+
+/**
+ * Instrumental lines ("Intro: [C] [G] (2x)") are printed with the chords inline: none of
+ * their chords is on a letter, and the rest is a label, notes in parentheses or musical
+ * symbols. A line with lyrics keeps its chords above, even if they sit on spaces.
+ */
+export function isInlineChordLine(text: string, chords: ChordAnchor[]): boolean {
   if (!chords.length) return false;
-  return chords.every((c) => c.pos >= text.length || /\s/.test(text[c.pos]));
+  if (!chords.every((c) => c.pos >= text.length || /\s/.test(text[c.pos]))) return false;
+  let words = text.replace(/\([^)]*\)/g, ' ').trim().split(/\s+/).filter(Boolean);
+  const label = words.findIndex((w) => w.endsWith(':'));
+  if (label >= 0 && label < 3) words = words.slice(label + 1);
+  return words.every((w) => MUSIC_SYMBOL.test(w) || SECTION_WORD.test(w));
 }
 
 function segments(text: string, chords: ChordAnchor[]) {
