@@ -253,9 +253,12 @@ to the workspace root with `/` separators.
 - All files are loaded into memory when the workspace opens; reads are served from
   memory. A write resolves only after the IndexedDB transaction commits, and **throws** if
   the browser refuses it, so the app never reports a failed save as saved.
-- If the browser's storage does not answer within 8 seconds at startup (seen once in
-  Firefox), the app keeps the session in memory, names the step it was waiting for in the
-  error bar, and still offers Import and Download.
+- The database is at version 2, which adds no data: upgrading re-runs the setup, which
+  creates any missing store (Firefox was seen with a version-1 `narwal-db` that had none).
+  Open connections close on `versionchange`, so a newer app in another tab can upgrade.
+- If the browser's storage fails or does not answer within 8 seconds at startup (e.g. an
+  old tab blocks the upgrade), the app keeps the session in memory, says why in the error
+  bar, and still offers Import and Download.
 - When it opens, the workspace checks `navigator.storage.persisted()` in the background. If the data is not
   protected yet, the first write of a session calls `navigator.storage.persist()`, asking
   the browser not to evict it under storage pressure. While protection is granted the

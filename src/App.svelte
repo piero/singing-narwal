@@ -155,17 +155,17 @@
       rememberedFolder = h;
       return BrowserWorkspace.open((s) => (step = s));
     };
-    let r: Awaited<ReturnType<typeof start>> | 'stuck';
+    let r: Awaited<ReturnType<typeof start>> | 'stuck' | null;
     try {
       r = await orStuck(start());
     } catch (e) {
-      error = (e as Error).message;
-      r = await orStuck(BrowserWorkspace.open((s) => (step = s))).catch(() => 'stuck' as const);
+      // A remembered folder that fails is not a reason to lose browser storage: try it.
+      error = t('error.storage', { msg: (e as Error).message });
+      r = await orStuck(BrowserWorkspace.open((s) => (step = s))).catch(() => null);
     }
-    if (r === 'stuck') {
-      error = t('error.stuck', { step });
-      adoptBrowser(BrowserWorkspace.memory());
-    } else if (r instanceof BrowserWorkspace) adoptBrowser(r);
+    if (r === 'stuck') error = t('error.stuck', { step });
+    if (r === 'stuck' || r === null) adoptBrowser(BrowserWorkspace.memory());
+    else if (r instanceof BrowserWorkspace) adoptBrowser(r);
     else workspace = r;
   })();
 

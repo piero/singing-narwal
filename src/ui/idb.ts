@@ -5,6 +5,9 @@
 // backup times, the folder handle).
 
 const DB_NAME = 'narwal-db';
+// Version 2 adds no data: upgrading re-runs the setup below, which creates any missing
+// store. (Firefox was seen with a version-1 database that had none.)
+const DB_VERSION = 2;
 // Earlier name of the database; its contents are moved to DB_NAME once.
 const OLD_DB_NAME = 'narwal-score';
 
@@ -17,15 +20,20 @@ export function openDb(): Promise<IDBDatabase | null> {
   opening ??= new Promise<{ db: IDBDatabase; created: boolean } | null>((resolve) => {
     try {
       let created = false;
-      const req = indexedDB.open(DB_NAME, 1);
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
       req.onupgradeneeded = (e) => {
         created = e.oldVersion === 0;
-        req.result.createObjectStore('files');
-        req.result.createObjectStore('meta');
+        for (const store of ['files', 'meta']) if (!req.result.objectStoreNames.contains(store)) req.result.createObjectStore(store);
       };
-      req.onsuccess = () => resolve({ db: req.result, created });
+      req.onsuccess = () => {
+        // Let a newer version of the app (in another tab) upgrade the database.
+        req.result.onversionchange = () => req.result.close();
+        resolve({ db: req.result, created });
+      };
       req.onerror = () => resolve(null);
-      req.onblocked = () => resolve(null);
+      // Blocked: another tab still has the older version open. Wait for it to close (the
+      // startup reports a database that takes too long, and suggests closing other tabs).
+      req.onblocked = () => {};
     } catch {
       resolve(null);
     }
@@ -45,7 +53,9 @@ function openExisting(name: string): Promise<IDBDatabase | null> {
       req.onupgradeneeded = () => req.transaction?.abort();
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => resolve(null);
-      req.onblocked = () => resolve(null);
+      // Blocked: another tab still has the older version open. Wait for it to close (the
+      // startup reports a database that takes too long, and suggests closing other tabs).
+      req.onblocked = () => {};
     } catch {
       resolve(null);
     }
