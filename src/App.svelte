@@ -6,7 +6,7 @@
   import { defaultSongbook, serializeSongbook } from './core/songbook';
   import { tick } from 'svelte';
   import { loadFonts } from './ui/assets.svelte';
-  import { deleteFile, renameFile, renameSong, songbooksUsing } from './ui/fileops';
+  import { deleteFiles, renameFile, renameSong, songbookIndex } from './ui/fileops';
   import { onSaveError, settleSaves } from './ui/saves';
   import BookView from './ui/BookView.svelte';
   import { i18n, LANGS, setLang, t, type Lang } from './ui/i18n.svelte';
@@ -40,6 +40,13 @@
   let titles: Record<string, string> = $state({});
   let current = $state<string | null>(null);
   let filter = $state('');
+  /** For each song or page, the songbooks that include it. */
+  let usedIn: Record<string, string[]> = $state({});
+  /** Show only songs and pages that no songbook includes. */
+  let onlyUnused = $state(false);
+  /** Selection mode, to delete several songs and pages at once. */
+  let selecting = $state(false);
+  let selected: string[] = $state([]);
   let error = $state('');
   let importing = $state(false);
   let importDialog = $state<{ addFiles: (list: { name: string; bytes: Uint8Array }[]) => Promise<void> }>();
@@ -60,8 +67,14 @@
   let menu = $state<{ path: string; x: number; y: number } | null>(null);
   let fontKey = '';
 
+  async function refreshIndex() {
+    usedIn = await songbookIndex(workspace, files);
+  }
+
   async function refresh() {
     files = await workspace.list();
+    selected = selected.filter((f) => files.includes(f));
+    refreshIndex();
     for (const f of files.filter(isSong)) {
       workspace.readText(f).then((text) => (titles[f] = getMeta(parseSong(text), 'title') || f.split('/').pop()!));
     }
@@ -273,14 +286,19 @@
     current = name;
   }
 
+  const unused = (f: string) => !usedIn[f]?.length;
   const songs = $derived(
     files
       .filter(isSong)
       .filter((f) => !filter || (titles[f] ?? f).toLowerCase().includes(filter.toLowerCase()))
+      .filter((f) => !onlyUnused || unused(f))
       .sort((a, b) => (titles[a] ?? a).localeCompare(titles[b] ?? b)),
   );
   const books = $derived(files.filter(isSongbook));
-  const pages = $derived(files.filter(isPage));
+  const pages = $derived(files.filter(isPage).filter((f) => !onlyUnused || unused(f)));
+  const unusedCount = $derived(files.filter((f) => (isSong(f) || isPage(f)) && unused(f)).length);
+  /** The songbook open in the editor, whose songs and pages are marked in the sidebar. */
+  const openBook = $derived(current && isSongbook(current) ? current : null);
   const baseName = (f: string) => f.split('/').pop()!.replace(/\.(songbook|page)\.ya?ml$/i, '');
   const label = (f: string) => (isSong(f) ? (titles[f] ?? baseName(f)) : baseName(f));
 
@@ -323,29 +341,80 @@
     }));
   }
 
-  async function remove(path: string) {
+  /** Delete files after a confirmation that lists, songbook by songbook, what each will lose. */
+  async function remove(paths: string[]) {
     menu = null;
-    const used = await songbooksUsing(workspace, files, path);
-    let msg = t('confirm.delete', { name: label(path) });
-    if (used.length) msg += '\n\n' + t('confirm.deleteUsed', { books: used.map(baseName).join(', ') });
+    if (!paths.length) return;
+    await settleSaves();
+    const index = await songbookIndex(workspace, files);
+    const byBook = new Map<string, string[]>();
+    for (const p of paths) for (const b of index[p] ?? []) if (!paths.includes(b)) byBook.set(b, [...(byBook.get(b) ?? []), p]);
+    const names = (list: string[], max: number) =>
+      list.slice(0, max).map(label).join(', ') + (list.length > max ? ' ' + t('confirm.more', { n: list.length - max }) : '');
+    let msg =
+      paths.length === 1
+        ? t('confirm.delete', { name: label(paths[0]) })
+        : t('confirm.deleteMany', { n: paths.length }) + '\n' + paths.slice(0, 12).map((p) => '• ' + label(p)).join('\n') + (paths.length > 12 ? '\n' + t('confirm.more', { n: paths.length - 12 }) : '');
+    if (byBook.size) {
+      msg += '\n\n' + t(paths.length === 1 ? 'confirm.deleteUsed' : 'confirm.deleteManyUsed') + '\n';
+      msg += [...byBook].map(([b, ps]) => '• ' + baseName(b) + (paths.length > 1 ? ': ' + names(ps, 6) : '')).join('\n');
+    }
     if (!confirm(msg)) return;
+    const open = current;
     await withEditorsClosed(async () => {
-      await deleteFile(workspace, files, path);
-      return { from: path, to: null };
+      await deleteFiles(workspace, files, paths);
+      for (const p of paths) delete titles[p];
+      selected = [];
+      selecting = false;
+      return { from: open && paths.includes(open) ? open : '', to: null };
     });
+  }
+
+  function toggleSelected(f: string) {
+    selected = selected.includes(f) ? selected.filter((x) => x !== f) : [...selected, f];
+  }
+
+  function stopSelecting() {
+    selecting = false;
+    selected = [];
+  }
+
+  /** Tooltip of a song or page in the sidebar: its name and the songbooks including it. */
+  function membership(f: string, text: string) {
+    const books = usedIn[f] ?? [];
+    return text + '\n' + (books.length ? t('side.inBooks', { books: books.map(baseName).join(', ') }) : t('side.inNoBook'));
   }
   // Web-sized copy of assets/narwal-logo.png (the master, also the app icon).
   const LOGO = import.meta.env.BASE_URL + 'narwal-logo-256.png';
 </script>
 
 {#snippet item(f: string, text: string)}
-  <li class:active={current === f} class:menu-open={menu?.path === f} oncontextmenu={(e) => openMenu(f, e)}>
-    <button class="open" onclick={() => (current = f)} title={text}>{text}</button>
-    <button class="more" title={t('menu.more')} aria-label={t('menu.more')} onclick={(e) => openMenu(f, e)}>⋯</button>
+  {@const member = !isSongbook(f)}
+  {@const books = usedIn[f] ?? []}
+  {@const pick = selecting && member}
+  <li
+    class:active={current === f && !pick}
+    class:menu-open={menu?.path === f}
+    class:unused={member && !books.length}
+    class:in-open={!!openBook && books.includes(openBook)}
+    class:checked={pick && selected.includes(f)}
+    oncontextmenu={(e) => openMenu(f, e)}
+  >
+    {#if pick}<input type="checkbox" checked={selected.includes(f)} onchange={() => toggleSelected(f)} aria-label={text} />{/if}
+    <button class="open" onclick={() => (pick ? toggleSelected(f) : (current = f))} title={member ? membership(f, text) : text}>{text}</button>
+    {#if member}<span class="books" title={membership(f, text)}>{books.length || '○'}</span>{/if}
+    {#if !pick}<button class="more" title={t('menu.more')} aria-label={t('menu.more')} onclick={(e) => openMenu(f, e)}>⋯</button>{/if}
   </li>
 {/snippet}
 
-<svelte:window onclick={() => (menu = null)} onkeydown={(e) => e.key === 'Escape' && (menu = null)} />
+<svelte:window
+  onclick={() => (menu = null)}
+  onkeydown={(e) => {
+    if (e.key !== 'Escape') return;
+    if (menu) menu = null;
+    else if (selecting && !importing) stopSelecting();
+  }}
+/>
 
 <div class="app">
   <aside>
@@ -406,6 +475,11 @@
       {#each books as f (f)}{@render item(f, '📖 ' + baseName(f))}{/each}
     </ul>
 
+    <div class="tools">
+      <label title={t('side.onlyUnusedHelp')}><input type="checkbox" bind:checked={onlyUnused} /> {t('side.onlyUnused', { n: unusedCount })}</label>
+      {#if !selecting}<button class="link" onclick={() => (selecting = true)} title={t('side.selectHelp')}>{t('side.select')}</button>{/if}
+    </div>
+
     <h3>{t('side.pages')} <button class="add" onclick={newPage} title={t('side.newPage')}>+</button></h3>
     <ul>
       {#each pages as f (f)}{@render item(f, '📄 ' + baseName(f))}{/each}
@@ -417,6 +491,15 @@
       {#each songs as f (f)}{@render item(f, titles[f] ?? baseName(f))}{/each}
     </ul>
 
+    {#if selecting}
+      <div class="selection">
+        <span>{t('side.selected', { n: selected.length })}</span>
+        <button class="link" onclick={() => (selected = [...pages, ...songs])}>{t('side.selectAll')}</button>
+        <button class="danger" disabled={!selected.length} onclick={() => remove(selected)}>{t('side.deleteSelected')}</button>
+        <button onclick={stopSelecting}>{t('side.cancel')}</button>
+      </div>
+    {/if}
+
     <label class="lang">
       {t('side.language')}
       <select value={i18n.lang} onchange={(e) => setLang(e.currentTarget.value as Lang)}>
@@ -427,6 +510,17 @@
 
   <main>
     {#if error}<div class="error" role="alert">{error} <button aria-label="✕" onclick={() => (error = '')}>✕</button></div>{/if}
+    {#if fonts && current && (isSong(current) || isPage(current))}
+      {@const books = usedIn[current] ?? []}
+      <div class="used-in" class:unused={!books.length}>
+        {#if books.length}
+          {t('side.inBooksLabel')}
+          {#each books as b (b)}<button onclick={() => (current = b)}>📖 {baseName(b)}</button>{/each}
+        {:else}
+          ○ {t('side.inNoBookHint')}
+        {/if}
+      </div>
+    {/if}
     {#if !fonts}
       <div class="empty">{t('app.loading')}</div>
     {:else if current && isSong(current)}
@@ -435,7 +529,7 @@
       {/key}
     {:else if current && isSongbook(current)}
       {#key current}
-        <BookView {workspace} path={current} {fonts} {files} onopen={(p) => (current = p)} onfileschanged={refresh} />
+        <BookView {workspace} path={current} {fonts} {files} onopen={(p) => (current = p)} onfileschanged={refresh} onsaved={refreshIndex} />
       {/key}
     {:else if current && isPage(current)}
       {#key current}
@@ -465,7 +559,7 @@
     {#if isSongbook(m.path)}
       <button role="menuitem" onclick={() => downloadBookZip(m.path)}>{t('book.zip')}</button>
     {/if}
-    <button role="menuitem" class="danger" onclick={() => remove(m.path)}>{t('menu.delete')}</button>
+    <button role="menuitem" class="danger" onclick={() => remove([m.path])}>{t('menu.delete')}</button>
   </div>
 {/if}
 
@@ -677,6 +771,128 @@
     min-width: 0;
     min-height: 0;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  /* The editor takes the height left by the error bar and the songbooks line. */
+  main > :global(.song-view),
+  main > :global(.book-view),
+  main > :global(.page-view) {
+    flex: 1;
+    height: auto;
+  }
+  .used-in {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 16px;
+    border-bottom: 1px solid var(--line);
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .used-in button {
+    border: 1px solid var(--line);
+    background: var(--bg);
+    color: var(--fg);
+    border-radius: 10px;
+    padding: 1px 8px;
+    font: inherit;
+    cursor: pointer;
+  }
+  .used-in button:hover {
+    border-color: var(--accent);
+  }
+  .tools {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-top: 14px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .tools button.link {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--accent);
+    font: inherit;
+    cursor: pointer;
+  }
+  /* Songbooks including each song or page; ○ when none. */
+  .books {
+    flex: none;
+    min-width: 16px;
+    padding: 0 5px;
+    border-radius: 8px;
+    font-size: 11px;
+    text-align: center;
+    color: var(--muted);
+    background: var(--chip-hover);
+  }
+  li.unused .open {
+    color: var(--muted);
+    font-style: italic;
+  }
+  li.unused .books {
+    background: none;
+  }
+  /* Members of the songbook open in the editor. */
+  li.in-open {
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+  li.in-open .books {
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+  li.active .books {
+    color: var(--on-accent);
+    background: rgba(255, 255, 255, 0.25);
+  }
+  li input[type='checkbox'] {
+    margin: 0 0 0 6px;
+  }
+  li.checked {
+    background: var(--line-focus);
+  }
+  .selection {
+    position: sticky;
+    bottom: -12px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin: 8px -12px -12px;
+    padding: 8px 12px;
+    background: var(--sidebar);
+    border-top: 1px solid var(--line);
+    font-size: 12px;
+  }
+  .selection span {
+    flex: 1 0 100%;
+    font-weight: 600;
+  }
+  .selection button {
+    border: 1px solid var(--line);
+    background: var(--bg);
+    color: var(--fg);
+    border-radius: 5px;
+    padding: 2px 8px;
+    font: inherit;
+    cursor: pointer;
+  }
+  .selection button.link {
+    border: none;
+    background: none;
+    color: var(--accent);
+    padding: 0;
+    margin-right: auto;
+  }
+  .selection button.danger {
+    background: #c5221f;
+    border-color: #c5221f;
+    color: #fff;
   }
   .empty {
     padding: 48px;

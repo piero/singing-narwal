@@ -212,7 +212,10 @@ like the rest of the project.
       (IndexedDB); folder remembered between sessions; backup reminder; restore from
       `.zip`; failed saves reported.
 - [x] Desktop app starts in `~/Documents/SingingNarwal` or the last folder used.
-- [x] Rename and delete files, keeping songbooks consistent; save a copy of any file;
+- [x] Which songbooks include each song and page (and the reverse) shown in the sidebar
+      and the editors; songs and pages in no songbook marked and filterable.
+- [x] Rename and delete files, one or many at once, keeping songbooks consistent (the
+      confirmation lists what each songbook will lose); save a copy of any file;
       download the workspace, or one songbook with the files it uses, as a `.zip`.
 - [x] English and Italian interface; GPL-3.0-or-later.
 

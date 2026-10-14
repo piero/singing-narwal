@@ -18,7 +18,17 @@
     files,
     onopen,
     onfileschanged,
-  }: { workspace: Workspace; path: string; fonts: FontRegistry; files: string[]; onopen: (path: string) => void; onfileschanged: () => void } = $props();
+    onsaved,
+  }: {
+    workspace: Workspace;
+    path: string;
+    fonts: FontRegistry;
+    files: string[];
+    onopen: (path: string) => void;
+    onfileschanged: () => void;
+    /** Called after the songbook file is saved (its contents may have changed). */
+    onsaved?: () => void;
+  } = $props();
 
   let book = $state<Songbook | null>(null);
   let loadedPath = '';
@@ -79,6 +89,7 @@
         await workspace.writeText(target, text);
         savedText = text;
         status = t('song.saved');
+        onsaved?.();
       });
     }
   });

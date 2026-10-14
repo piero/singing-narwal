@@ -97,6 +97,17 @@ sheet, 2 pages per sheet) and the columns, then **Export PDF**.
 
 Pages and songs can be shared by several songbooks: editing one changes it everywhere.
 
+### Keep track of what is in which songbook
+
+- In the sidebar, the number next to each song and page is how many songbooks include it
+  (hover to see which). Songs and pages in no songbook are dimmed and marked ○; tick
+  **Only not in a songbook** to list just those.
+- While a songbook is open, the songs and pages it contains are marked in the sidebar.
+- Above a song or page, **In songbooks:** links to each songbook that includes it.
+- To delete several songs and pages, click **Select…**, tick them (or **Select all
+  shown**, which respects the search and the filter) and click **Delete…**. Before
+  anything is deleted, you are told which songbooks will lose which songs and pages.
+
 ### Save, share and back up
 
 | To | Use |

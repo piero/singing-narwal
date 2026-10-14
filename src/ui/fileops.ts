@@ -47,6 +47,25 @@ export async function songbooksUsing(ws: Workspace, files: string[], target: str
   return out;
 }
 
+/** For each file that songbooks include, the songbooks including it (workspace paths). */
+export async function songbookIndex(ws: Workspace, files: string[]): Promise<Record<string, string[]>> {
+  const index: Record<string, string[]> = {};
+  for (const b of files.filter(isSongbook)) {
+    try {
+      const book = parseSongbook(await ws.readText(b));
+      for (const c of book.contents) {
+        const p = itemPath(c);
+        if (!p) continue;
+        const list = (index[resolveFrom(b, p)] ??= []);
+        if (!list.includes(b)) list.push(b);
+      }
+    } catch {
+      /* unreadable songbook: it includes nothing we can tell */
+    }
+  }
+  return index;
+}
+
 async function updateSongbooks(ws: Workspace, books: string[], fn: (book: string, items: ContentItem[]) => ContentItem[]) {
   for (const b of books) {
     const book = parseSongbook(await ws.readText(b));
@@ -94,9 +113,11 @@ export async function renameFile(ws: Workspace, files: string[], path: string, n
   return moveFile(ws, files, path, target);
 }
 
-/** Delete a file and remove it from the songbooks that include it. */
-export async function deleteFile(ws: Workspace, files: string[], path: string) {
-  const books = await songbooksUsing(ws, files, path);
-  await updateSongbooks(ws, books, (b, items) => items.filter((c) => !itemPath(c) || resolveFrom(b, itemPath(c)!) !== path));
-  await ws.remove(path);
+/** Delete files and remove them from the songbooks that include them. */
+export async function deleteFiles(ws: Workspace, files: string[], paths: string[]) {
+  const gone = new Set(paths);
+  const index = await songbookIndex(ws, files);
+  const books = [...new Set(paths.flatMap((p) => index[p] ?? []))].filter((b) => !gone.has(b));
+  await updateSongbooks(ws, books, (b, items) => items.filter((c) => !itemPath(c) || !gone.has(resolveFrom(b, itemPath(c)!))));
+  for (const p of paths) await ws.remove(p);
 }
