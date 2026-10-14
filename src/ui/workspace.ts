@@ -119,11 +119,14 @@ export class BrowserWorkspace implements Workspace {
     return t('ws.browserName');
   }
 
-  static async open(): Promise<BrowserWorkspace> {
+  /** Open the browser's storage; `step` is told what is being waited for (to report a hang). */
+  static async open(step: (name: string) => void = () => {}): Promise<BrowserWorkspace> {
+    step('indexedDB.open');
     const db = await openDb();
     if (!db) {
       return new BrowserWorkspace(null, legacyFiles() ?? new Map());
     }
+    step('indexedDB read');
     if (!(await idbGet(db, 'meta', 'seeded'))) {
       await idbPutAll(db, 'files', [...(legacyFiles() ?? [])]);
       await idbPut(db, 'meta', 'seeded', true);
@@ -131,8 +134,21 @@ export class BrowserWorkspace implements Workspace {
     }
     const ws = new BrowserWorkspace(db, new Map(await idbEntries<Uint8Array>(db, 'files')));
     ws.backup = (await idbGet<BackupState>(db, 'meta', 'backup')) ?? ws.backup;
-    ws.storageProtected = await navigator.storage?.persisted?.().catch(() => false) ?? false;
+    // Asked in the background: startup must not wait for the browser's answer.
+    navigator.storage
+      ?.persisted?.()
+      .then((granted) => {
+        if (!granted || ws.storageProtected) return;
+        ws.storageProtected = true;
+        ws.onprotected?.();
+      })
+      .catch(() => {});
     return ws;
+  }
+
+  /** Files kept in memory only, for when the browser's storage does not respond. */
+  static memory(): BrowserWorkspace {
+    return new BrowserWorkspace(null, new Map());
   }
 
   async list() {

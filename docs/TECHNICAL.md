@@ -253,7 +253,10 @@ to the workspace root with `/` separators.
 - All files are loaded into memory when the workspace opens; reads are served from
   memory. A write resolves only after the IndexedDB transaction commits, and **throws** if
   the browser refuses it, so the app never reports a failed save as saved.
-- When it opens, the workspace checks `navigator.storage.persisted()`. If the data is not
+- If the browser's storage does not answer within 8 seconds at startup (seen once in
+  Firefox), the app keeps the session in memory, names the step it was waiting for in the
+  error bar, and still offers Import and Download.
+- When it opens, the workspace checks `navigator.storage.persisted()` in the background. If the data is not
   protected yet, the first write of a session calls `navigator.storage.persist()`, asking
   the browser not to evict it under storage pressure. While protection is granted the
   sidebar says "Protected from automatic deletion". The Safari 7-day warning stays: Apple

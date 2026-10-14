@@ -85,7 +85,8 @@
       try {
         const r = await loadFonts(workspace, files);
         fonts = r.fonts;
-        error = r.errors.join('; ');
+        // Keep any other error on screen (e.g. storage not responding at startup).
+        if (r.errors.length) error = r.errors.join('; ');
       } catch (e) {
         error = t('app.fontsError', { msg: (e as Error).message });
       }
@@ -113,38 +114,59 @@
   /** Folder used last time in this browser, waiting for the user's permission to reopen it. */
   let rememberedFolder = $state<Awaited<ReturnType<typeof BrowserFolderWorkspace.remembered>>>(null);
 
-  async function useBrowserStorage() {
-    if (!browserWs) {
-      browserWs = await BrowserWorkspace.open();
-      backup = browserWs.backup;
-      browserWs.onchange = (b) => (backup = b);
-      storageProtected = browserWs.storageProtected;
-      browserWs.onprotected = () => (storageProtected = true);
-    }
-    workspace = browserWs;
+  /** Work in a browser workspace (the browser's storage, or memory only). */
+  function adoptBrowser(ws: BrowserWorkspace) {
+    browserWs = ws;
+    backup = ws.backup;
+    ws.onchange = (b) => (backup = b);
+    ws.onprotected = () => (storageProtected = true);
+    storageProtected = ws.storageProtected;
+    workspace = ws;
   }
+
+  async function useBrowserStorage() {
+    if (browserWs) workspace = browserWs;
+    else adoptBrowser(await BrowserWorkspace.open());
+  }
+
+  /** Resolves with 'stuck' if `p` takes longer than `ms`: some browsers never answer a storage call. */
+  const orStuck = <T,>(p: Promise<T>, ms = 8000) => Promise.race([p, new Promise<'stuck'>((r) => setTimeout(() => r('stuck'), ms))]);
 
   // Start: the desktop app always works in a folder on disk; the website reopens the folder
   // used last time when the browser still allows it, and otherwise uses browser storage.
+  // If the browser's storage does not answer, the session runs in memory and says why.
   (async () => {
-    try {
-      if (tiny()) {
+    if (tiny()) {
+      try {
         const r = await TinyWorkspace.start();
         workspace = r.ws;
         notice = r.notice ?? '';
-        return;
+      } catch (e) {
+        error = (e as Error).message;
       }
+      return;
+    }
+    let step = 'indexedDB.open';
+    const start = async () => {
       const h = BrowserFolderWorkspace.supported() ? await BrowserFolderWorkspace.remembered() : null;
+      step = 'folder permission';
       const ws = h && (await BrowserFolderWorkspace.reopen(h, false));
-      if (ws) workspace = ws;
-      else {
-        rememberedFolder = h;
-        await useBrowserStorage();
-      }
+      if (ws) return ws;
+      rememberedFolder = h;
+      return BrowserWorkspace.open((s) => (step = s));
+    };
+    let r: Awaited<ReturnType<typeof start>> | 'stuck';
+    try {
+      r = await orStuck(start());
     } catch (e) {
       error = (e as Error).message;
-      if (!tiny()) await useBrowserStorage();
+      r = await orStuck(BrowserWorkspace.open((s) => (step = s))).catch(() => 'stuck' as const);
     }
+    if (r === 'stuck') {
+      error = t('error.stuck', { step });
+      adoptBrowser(BrowserWorkspace.memory());
+    } else if (r instanceof BrowserWorkspace) adoptBrowser(r);
+    else workspace = r;
   })();
 
   async function reopenFolder() {

@@ -80,6 +80,7 @@ const en = {
   'ws.zipEmpty': 'No songs, songbooks, pages, images or fonts found in “{name}”.',
   'ws.defaultFolder': 'Your files are saved in {path}. Use “Open folder…” to work somewhere else.',
   'ws.folderMissing': 'The folder {path} was not found: now working in {fallback}.',
+  'error.stuck': 'The browser’s storage is not responding (waiting for: {step}), so for now your work is kept in memory only: download a .zip before closing the page. Closing other tabs of this site, or restarting the browser, usually fixes it.',
   'error.save': 'Could not save: {msg}',
 
   // Song view
@@ -302,6 +303,7 @@ const it: Dict = {
   'ws.zipEmpty': 'Nessuna canzone, canzoniere, pagina, immagine o font trovato in “{name}”.',
   'ws.defaultFolder': 'I tuoi file sono salvati in {path}. Usa “Apri cartella…” per lavorare altrove.',
   'ws.folderMissing': 'La cartella {path} non è stata trovata: ora lavori in {fallback}.',
+  'error.stuck': 'Lo spazio di archiviazione del browser non risponde (in attesa di: {step}), quindi per ora il lavoro è tenuto solo in memoria: scarica uno .zip prima di chiudere la pagina. Di solito si risolve chiudendo le altre schede di questo sito o riavviando il browser.',
   'error.save': 'Salvataggio non riuscito: {msg}',
 
   'song.title': 'Titolo',
