@@ -133,14 +133,6 @@
       <div class="row">
         <input placeholder={t('song.artist')} value={meta('artist')} oninput={(e) => setM('artist', e.currentTarget.value)} />
         <input class="short" placeholder={t('song.key')} value={meta('key')} oninput={(e) => setM('key', e.currentTarget.value)} />
-        <label>
-          {t('song.columns')}
-          <select value={meta('columns') || 'auto'} onchange={(e) => setM('columns', e.currentTarget.value === 'auto' ? '' : e.currentTarget.value)}>
-            <option value="auto">{t('opt.auto')}</option>
-            <option value="1">1</option>
-            <option value="2">2</option>
-          </select>
-        </label>
       </div>
       <div class="row chord-tools">
         <span class="seg" role="group" aria-label={t('opt.chords')}>
@@ -188,6 +180,14 @@
           <option value="2up">{t('opt.2up')}</option>
         </select>
       </label>
+      <label title={t('song.columnsHelp')}>
+        {t('song.columns')}
+        <select value={meta('columns') || 'auto'} onchange={(e) => setM('columns', e.currentTarget.value === 'auto' ? '' : e.currentTarget.value)}>
+          <option value="auto">{t('opt.auto')}</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+        </select>
+      </label>
       <button class="primary" onclick={exportPdf} disabled={!laid}>{t('opt.exportPdf')}</button>
     </div>
     {#if laid}
@@ -224,8 +224,7 @@
     gap: 8px;
     border-bottom: 1px solid var(--line);
   }
-  .meta input,
-  .meta select {
+  .meta input {
     font: inherit;
     padding: 4px 6px;
     border: 1px solid var(--line);
@@ -244,6 +243,7 @@
   }
   .row input {
     flex: 1;
+    min-width: 0;
   }
   .row input.short {
     flex: 0 0 70px;

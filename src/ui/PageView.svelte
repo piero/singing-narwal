@@ -20,9 +20,15 @@
   import { ImageUrls } from './assets.svelte';
   import { t, type Key } from './i18n.svelte';
   import Preview from './Preview.svelte';
-  import { isImage, type Workspace } from './workspace';
+  import { importImage, isImage, type Workspace } from './workspace';
 
-  let { workspace, path, fonts, files }: { workspace: Workspace; path: string; fonts: FontRegistry; files: string[] } = $props();
+  let {
+    workspace,
+    path,
+    fonts,
+    files,
+    onfileschanged,
+  }: { workspace: Workspace; path: string; fonts: FontRegistry; files: string[]; onfileschanged?: () => void } = $props();
 
   let tpl = $state<PageDoc | null>(null);
   let mode: 'elements' | 'source' = $state('elements');
@@ -186,6 +192,14 @@
                     <option value="">{t('page.chooseImage')}</option>
                     {#each files.filter(isImage) as f (f)}<option value={f}>{f}</option>{/each}
                   </select>
+                  <button
+                    class="pick"
+                    onclick={async () => {
+                      const p = await importImage(workspace, files);
+                      if (!p) return;
+                      onfileschanged?.();
+                      e.image = p;
+                    }}>{t('page.fromComputer')}</button>
                   {@render heightPicker(e)}
                   <label>{t('page.width')} <input type="number" min="5" max="100" value={Math.round((e.width ?? 1) * 100)} oninput={(ev) => (e.width = Number(ev.currentTarget.value) / 100)} /></label>
                   {@render alignPicker(e)}
@@ -315,13 +329,17 @@
   }
   input,
   select,
-  textarea {
+  textarea,
+  .pick {
     font: inherit;
     padding: 3px 6px;
     border: 1px solid var(--line);
     border-radius: 4px;
     background: var(--bg);
     color: var(--fg);
+  }
+  .pick {
+    cursor: pointer;
   }
   input[type='number'] {
     width: 4.5em;

@@ -242,15 +242,55 @@ export class TinyWorkspace implements Workspace {
 }
 
 /** Desktop app: pick files anywhere on disk and read them through the backend. */
-export async function readExternalFiles(): Promise<{ name: string; bytes: Uint8Array }[]> {
+export async function readExternalFiles(types = ['odt', 'txt', 'cho', 'chordpro', 'png', 'jpg', 'jpeg', 'ttf', 'otf']): Promise<{ name: string; bytes: Uint8Array }[]> {
   const t = tiny()!;
-  const paths = (await t.dialog.openFiles({ types: ['odt', 'txt', 'cho', 'chordpro', 'png', 'jpg', 'jpeg', 'ttf', 'otf'] })) ?? [];
+  const paths = (await t.dialog.openFiles({ types })) ?? [];
   return Promise.all(
     paths.map(async (p) => ({ name: p.split('/').pop()!, bytes: fromBase64((await t.api.call('readAbsolute', { path: p })) as string) })),
   );
 }
 
-/** Save a generated file: native dialog in the app, download in the browser. */
+/** Let the user pick files from their computer: native dialog in the app, file input in the browser. */
+export async function pickLocalFiles(types: string[], multiple = false): Promise<{ name: string; bytes: Uint8Array }[]> {
+  if (tiny()) return (await readExternalFiles(types)).slice(0, multiple ? undefined : 1);
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = multiple;
+    input.accept = types.map((x) => '.' + x).join(',');
+    input.onchange = async () =>
+      resolve(await Promise.all([...(input.files ?? [])].map(async (f) => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) }))));
+    input.oncancel = () => resolve([]);
+    input.click();
+  });
+}
+
+/**
+ * Copy an image chosen from the computer into the workspace's images/ folder, or reuse an
+ * identical one already there. Returns its path, or null if cancelled.
+ */
+export async function importImage(ws: Workspace, files: string[]): Promise<string | null> {
+  const [f] = await pickLocalFiles(['png', 'jpg', 'jpeg']);
+  if (!f) return null;
+  const dot = f.name.lastIndexOf('.');
+  const base = 'images/' + f.name.slice(0, dot).replace(/[/\\:]/g, '-');
+  const ext = f.name.slice(dot).toLowerCase();
+  // Reuse an identical image already in the workspace, whatever its name.
+  const same = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((x, i) => x === b[i]);
+  const candidates = files.filter(isImage).sort((a, b) => Number(!a.startsWith(base)) - Number(!b.startsWith(base)));
+  for (const c of candidates) {
+    try {
+      if (same(await ws.readBytes(c), f.bytes)) return c;
+    } catch {
+      /* unreadable: not a match */
+    }
+  }
+  let p = base + ext;
+  for (let n = 2; files.includes(p); n++) p = `${base}-${n}${ext}`;
+  await ws.writeBytes(p, f.bytes);
+  return p;
+}
+
 /**
  * Save a file chosen by the user ("Save as…"): native dialog in the desktop app
  * and in Chromium browsers, a download elsewhere. Returns false if cancelled.

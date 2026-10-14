@@ -281,7 +281,7 @@
       {/key}
     {:else if current && isPage(current)}
       {#key current}
-        <PageView {workspace} path={current} {fonts} {files} />
+        <PageView {workspace} path={current} {fonts} {files} onfileschanged={refresh} />
       {/key}
     {:else}
       <div class="empty">

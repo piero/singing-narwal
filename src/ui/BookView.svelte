@@ -10,7 +10,7 @@
   import { ImageUrls } from './assets.svelte';
   import { i18n, t, type Key } from './i18n.svelte';
   import Preview from './Preview.svelte';
-  import { isImage, isPage, isSong, saveFile, type Workspace } from './workspace';
+  import { importImage, isImage, isPage, isSong, saveFile, type Workspace } from './workspace';
 
   let {
     workspace,
@@ -229,6 +229,13 @@
           {#each files.filter(isImage) as f (f)}<option value={f}>{f}</option>{/each}
         </select>
         <button disabled={!addImage} onclick={() => { add({ image: rel(addImage) }); addImage = ''; }}>{t('book.add')}</button>
+        <button
+          onclick={async () => {
+            const p = await importImage(workspace, files);
+            if (!p) return;
+            onfileschanged();
+            add({ image: rel(p) });
+          }}>{t('book.imageFromComputer')}</button>
       </div>
       {#if built?.warnings.length}
         <ul class="warnings">{#each built.warnings as w (w)}<li>{w}</li>{/each}</ul>
