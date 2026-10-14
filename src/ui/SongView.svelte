@@ -61,6 +61,7 @@
         onsaved?.();
       } catch (e) {
         status = t('song.saveFailed', { msg: (e as Error).message });
+        throw e; // also shown by the app
       }
     });
   });

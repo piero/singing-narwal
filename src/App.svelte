@@ -7,7 +7,7 @@
   import { tick } from 'svelte';
   import { loadFonts } from './ui/assets.svelte';
   import { deleteFile, renameFile, renameSong, songbooksUsing } from './ui/fileops';
-  import { settleSaves } from './ui/saves';
+  import { onSaveError, settleSaves } from './ui/saves';
   import BookView from './ui/BookView.svelte';
   import { i18n, LANGS, setLang, t, type Lang } from './ui/i18n.svelte';
   import ImportDialog from './ui/ImportDialog.svelte';
@@ -15,12 +15,16 @@
   import SongView from './ui/SongView.svelte';
   import {
     BrowserFolderWorkspace,
-    DemoWorkspace,
+    BrowserWorkspace,
+    NoWorkspace,
+    TinyWorkspace,
     copyWorkspace,
+    filesFromZip,
     isPage,
     isSong,
     isSongbook,
     pickFolder,
+    pickLocalFiles,
     saveFile,
     tiny,
     zipWorkspace,
@@ -28,7 +32,8 @@
   } from './ui/workspace';
 
   let fonts = $state<FontRegistry | null>(null);
-  let workspace: Workspace = $state(new DemoWorkspace());
+  let workspace: Workspace = $state(new NoWorkspace());
+  const ready = $derived(!(workspace instanceof NoWorkspace));
   let files: string[] = $state([]);
   let titles: Record<string, string> = $state({});
   let current = $state<string | null>(null);
@@ -66,12 +71,75 @@
 
   let notice = $state('');
   const canUseFolders = !!tiny() || BrowserFolderWorkspace.supported();
+
+  onSaveError((e) => (error = t('error.save', { msg: (e as Error).message })));
+  // Any other failed operation (e.g. creating a file) is shown too, not only logged.
+  window.addEventListener('unhandledrejection', (e) => (error = t('error.op', { msg: (e.reason as Error)?.message ?? String(e.reason) })));
+
+  // Browser storage, and the backup reminder that goes with it.
+  let browserWs: BrowserWorkspace | null = null;
+  let backup = $state({ lastChange: 0, lastBackup: 0 });
+  /** Folder used last time in this browser, waiting for the user's permission to reopen it. */
+  let rememberedFolder = $state<Awaited<ReturnType<typeof BrowserFolderWorkspace.remembered>>>(null);
+
+  async function useBrowserStorage() {
+    if (!browserWs) {
+      browserWs = await BrowserWorkspace.open();
+      backup = browserWs.backup;
+      browserWs.onchange = (b) => (backup = b);
+    }
+    workspace = browserWs;
+  }
+
+  // Start: the desktop app always works in a folder on disk; the website reopens the folder
+  // used last time when the browser still allows it, and otherwise uses browser storage.
+  (async () => {
+    try {
+      if (tiny()) {
+        const r = await TinyWorkspace.start();
+        workspace = r.ws;
+        notice = r.notice ?? '';
+        return;
+      }
+      const h = BrowserFolderWorkspace.supported() ? await BrowserFolderWorkspace.remembered() : null;
+      const ws = h && (await BrowserFolderWorkspace.reopen(h, false));
+      if (ws) workspace = ws;
+      else {
+        rememberedFolder = h;
+        await useBrowserStorage();
+      }
+    } catch (e) {
+      error = (e as Error).message;
+      if (!tiny()) await useBrowserStorage();
+    }
+  })();
+
+  async function reopenFolder() {
+    if (!rememberedFolder) return;
+    const ws = await BrowserFolderWorkspace.reopen(rememberedFolder, true);
+    if (ws) {
+      rememberedFolder = null;
+      workspace = ws;
+    }
+  }
+
+  async function switchToBrowser() {
+    await BrowserFolderWorkspace.forget();
+    rememberedFolder = null;
+    await useBrowserStorage();
+  }
+
+  const fmtDate = (ms: number) => new Date(ms).toLocaleDateString(i18n.lang, { day: 'numeric', month: 'short', year: 'numeric' });
+  const needsBackup = $derived(workspace.kind === 'browser' && backup.lastChange > backup.lastBackup);
   const where = (ws: Workspace) => (ws.kind === 'browser' ? t('where.browser') : t('where.folder', { name: ws.name }));
 
   async function openFolder() {
     try {
       const w = await pickFolder();
-      if (w) workspace = w;
+      if (w) {
+        rememberedFolder = null;
+        workspace = w;
+      }
     } catch (e) {
       error = (e as Error).message;
     }
@@ -89,6 +157,7 @@
       await tick();
       await settleSaves();
       const n = await copyWorkspace(workspace, target);
+      if (workspace instanceof BrowserWorkspace) await workspace.markBackedUp();
       workspace = target;
       await tick();
       current = open;
@@ -99,8 +168,37 @@
   }
 
   async function downloadZip() {
-    await settleSaves();
-    await saveFile(`${workspace.name}.zip`, await zipWorkspace(workspace), 'application/zip');
+    try {
+      await settleSaves();
+      const name = workspace instanceof BrowserWorkspace ? `narwal-score-${new Date().toISOString().slice(0, 10)}.zip` : `${workspace.name}.zip`;
+      if ((await saveFile(name, await zipWorkspace(workspace), 'application/zip')) && workspace instanceof BrowserWorkspace) await workspace.markBackedUp();
+    } catch (e) {
+      error = t('error.op', { msg: (e as Error).message });
+    }
+  }
+
+  /** Add the files of a .zip (e.g. a backup made with "Download all") to the workspace. */
+  async function openZip() {
+    const [zip] = await pickLocalFiles(['zip']);
+    if (!zip) return;
+    let entries: [string, Uint8Array][];
+    try {
+      entries = filesFromZip(zip.bytes);
+    } catch (e) {
+      error = t('error.op', { msg: (e as Error).message });
+      return;
+    }
+    if (!entries.length) {
+      error = t('ws.zipEmpty', { name: zip.name });
+      return;
+    }
+    const replaced = entries.filter(([p]) => files.includes(p)).length;
+    if (!confirm(t('ws.zipConfirm', { n: entries.length, name: zip.name, where: where(workspace) }) + (replaced ? '\n\n' + t('ws.zipReplace', { n: replaced }) : ''))) return;
+    await withEditorsClosed(async () => {
+      for (const [p, b] of entries) await workspace.writeBytes(p, b);
+      notice = t('ws.zipDone', { n: entries.length, name: zip.name });
+      return { from: '', to: null };
+    });
   }
 
   async function saveCopy(path: string) {
@@ -218,28 +316,50 @@
 <div class="app">
   <aside>
     <div class="ws">
-      <div class="ws-name" title={t('ws.title')}>{workspace.kind === 'browser' ? '🌐' : '📁'} {workspace.name}</div>
-      <p class="note" class:warn={workspace.kind === 'browser'}>
+      {#if ready}
+        <div class="ws-name" title={t('ws.title')}>{workspace.kind === 'browser' ? '🌐' : '📁'} {workspace.name}</div>
+        <p class="note" class:warn={workspace.kind === 'browser'}>
+          {#if workspace instanceof BrowserWorkspace && !workspace.persistent}
+            {t('ws.memoryOnly')}
+          {:else if workspace.kind === 'browser'}
+            {t('ws.browserNote')}
+          {:else if workspace.location}
+            {t('ws.folderPath', { path: workspace.location })}
+          {:else}
+            {t('ws.folderName', { name: workspace.name })}
+          {/if}
+        </p>
         {#if workspace.kind === 'browser'}
-          {t('ws.browserNote')}
-        {:else if workspace.location}
-          {t('ws.folderPath', { path: workspace.location })}
-        {:else}
-          {t('ws.folderName', { name: workspace.name })}
+          <p class="note" class:warn={needsBackup}>
+            {#if !backup.lastBackup}
+              {t('ws.backupNever')}
+            {:else if needsBackup}
+              {t('ws.backupChanged', { date: fmtDate(backup.lastBackup) })}
+            {:else}
+              {t('ws.backupOk', { date: fmtDate(backup.lastBackup) })}
+            {/if}
+          </p>
         {/if}
-      </p>
-      <div class="ws-actions">
+        {#if rememberedFolder}
+          <button class="wide" onclick={reopenFolder}>📁 {t('ws.reopen', { name: rememberedFolder.name })}</button>
+        {/if}
+        <div class="ws-actions">
+          {#if canUseFolders}
+            <button onclick={openFolder}>{t('ws.open')}</button>
+          {/if}
+          <button onclick={() => (importing = true)} disabled={!fonts}>{t('side.import')}</button>
+        </div>
         {#if canUseFolders}
-          <button onclick={openFolder}>{t('ws.open')}</button>
+          <button class="wide" class:primary={workspace.kind === 'browser'} onclick={saveAllToFolder}>{t('ws.saveToFolder')}</button>
         {/if}
-        <button onclick={() => (importing = true)} disabled={!fonts}>{t('side.import')}</button>
-      </div>
-      <div class="ws-actions">
-        {#if canUseFolders}
-          <button onclick={saveAllToFolder} class:primary={workspace.kind === 'browser'}>{t('ws.saveToFolder')}</button>
+        <div class="ws-actions">
+          <button onclick={downloadZip} class:primary={needsBackup && !canUseFolders}>{t('ws.zip')}</button>
+          <button onclick={openZip}>{t('ws.openZip')}</button>
+        </div>
+        {#if workspace.kind === 'folder' && !tiny()}
+          <button class="link" onclick={switchToBrowser}>🌐 {t('ws.useBrowser')}</button>
         {/if}
-        <button onclick={downloadZip}>{t('ws.zip')}</button>
-      </div>
+      {/if}
       {#if notice}<p class="note ok">{notice}</p>{/if}
     </div>
 
@@ -268,7 +388,7 @@
   </aside>
 
   <main>
-    {#if error}<div class="error">{error}</div>{/if}
+    {#if error}<div class="error" role="alert">{error} <button aria-label="✕" onclick={() => (error = '')}>✕</button></div>{/if}
     {#if !fonts}
       <div class="empty">{t('app.loading')}</div>
     {:else if current && isSong(current)}
@@ -345,6 +465,18 @@
   .ws-actions button {
     flex: 1;
   }
+  .ws button.link {
+    align-self: flex-start;
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--muted);
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .ws button.link:hover {
+    color: var(--fg);
+  }
   .note {
     font-size: 12px;
     color: var(--muted);
@@ -357,7 +489,7 @@
   .note.ok {
     color: #1e8e3e;
   }
-  .ws-actions button.primary {
+  .ws button.primary {
     background: var(--accent);
     border-color: var(--accent);
     color: var(--on-accent);
@@ -494,8 +626,18 @@
     color: var(--fg);
   }
   .error {
+    display: flex;
+    gap: 8px;
+    align-items: start;
+    justify-content: space-between;
     background: #fde7e9;
     color: #b3261e;
     padding: 8px 16px;
+  }
+  .error button {
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
   }
 </style>

@@ -4,9 +4,16 @@
 
 const pending = new Set<Promise<unknown>>();
 
+let reportError: (e: unknown) => void = (e) => console.error(e);
+
+/** Where failed saves are reported (the app shows them as an error). */
+export function onSaveError(fn: (e: unknown) => void) {
+  reportError = fn;
+}
+
 export function trackSave(p: Promise<unknown>) {
   pending.add(p);
-  p.finally(() => pending.delete(p));
+  p.catch(reportError).finally(() => pending.delete(p));
 }
 
 export async function settleSaves() {

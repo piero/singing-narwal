@@ -3,10 +3,13 @@
 //
 // - TinyJS (desktop app): real folder on disk, through the app backend.
 // - Browser folder: File System Access API (Chromium browsers only).
-// - Demo: in the browser's local storage, seeded with the bundled examples.
+// - Browser: in the browser's storage (IndexedDB), seeded with the bundled examples.
 
-import { zipSync } from 'fflate';
+import { unzipSync, zipSync } from 'fflate';
+import { isFontFile } from '../core/fonts';
 import type { FileLoader } from '../core/songbook';
+import { t } from './i18n.svelte';
+import { idbDelete, idbEntries, idbGet, idbPut, idbPutAll, openDb } from './idb';
 
 export interface Workspace extends FileLoader {
   name: string;
@@ -40,76 +43,179 @@ function fromBase64(s: string): Uint8Array {
   return out;
 }
 
-// --- Demo workspace --------------------------------------------------------
+// --- Browser workspace (IndexedDB) ------------------------------------------
 
 const examples = import.meta.glob('../../examples/**/*.{cho,yaml}', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
-const STORAGE_PREFIX = 'narwal:file:';
-// Deleted example files, which would otherwise come back on reload.
-const DELETED_PREFIX = 'narwal:deleted:';
+// Earlier versions kept files in localStorage; they are moved to IndexedDB once.
+const LEGACY_FILE = 'narwal:file:';
+const LEGACY_DELETED = 'narwal:deleted:';
 
-export class DemoWorkspace implements Workspace {
-  name = 'Demo';
-  kind = 'browser' as const;
-  private files = new Map<string, string>();
+export interface BackupState {
+  /** Time of the last change to the files (ms), 0 if never changed. */
+  lastChange: number;
+  /** Time of the last backup (.zip download or copy to a folder), 0 if never. */
+  lastBackup: number;
+}
 
-  constructor() {
-    for (const [k, v] of Object.entries(examples)) this.files.set(k.replace('../../examples/', ''), v);
-    try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i)!;
-        if (key.startsWith(STORAGE_PREFIX)) this.files.set(key.slice(STORAGE_PREFIX.length), localStorage.getItem(key) ?? '');
+function legacyFiles(): Map<string, Uint8Array> | null {
+  const files = new Map<string, Uint8Array>();
+  const deleted: string[] = [];
+  let found = false;
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)!;
+      const v = localStorage.getItem(key) ?? '';
+      if (key.startsWith(LEGACY_FILE)) {
+        found = true;
+        const bytes = v.startsWith('data:') ? fromBase64(v.slice(v.indexOf(',') + 1)) : new TextEncoder().encode(v);
+        files.set(key.slice(LEGACY_FILE.length), bytes);
+      } else if (key.startsWith(LEGACY_DELETED)) {
+        found = true;
+        deleted.push(key.slice(LEGACY_DELETED.length));
       }
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i)!;
-        if (key.startsWith(DELETED_PREFIX)) this.files.delete(key.slice(DELETED_PREFIX.length));
-      }
-    } catch {
-      // Storage unavailable (private mode): changes last until the page is closed.
     }
+  } catch {
+    return null;
   }
+  if (!found) return null;
+  for (const [k, v] of Object.entries(examples)) {
+    const p = k.replace('../../examples/', '');
+    if (!files.has(p)) files.set(p, new TextEncoder().encode(v));
+  }
+  for (const p of deleted) files.delete(p);
+  return files;
+}
+
+function clearLegacy() {
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i)!);
+    for (const k of keys) if (k.startsWith(LEGACY_FILE) || k.startsWith(LEGACY_DELETED)) localStorage.removeItem(k);
+  } catch {
+    /* nothing to clear */
+  }
+}
+
+/**
+ * Files kept in the browser (IndexedDB), seeded with the bundled examples on first use.
+ * Writes resolve only once stored, and throw if the browser refuses them (e.g. no space).
+ * Without IndexedDB, files live in memory only (`persistent` is false).
+ */
+export class BrowserWorkspace implements Workspace {
+  kind = 'browser' as const;
+  persistent: boolean;
+  backup: BackupState = { lastChange: 0, lastBackup: 0 };
+  /** Called after each change, with the new backup state. */
+  onchange?: (b: BackupState) => void;
+  private askedPersist = false;
+
+  private constructor(
+    private db: IDBDatabase | null,
+    private files: Map<string, Uint8Array>,
+  ) {
+    this.persistent = !!db;
+  }
+
+  get name() {
+    return t('ws.browserName');
+  }
+
+  static async open(): Promise<BrowserWorkspace> {
+    const db = await openDb();
+    if (!db) {
+      const files = legacyFiles() ?? new Map(Object.entries(examples).map(([k, v]) => [k.replace('../../examples/', ''), new TextEncoder().encode(v)]));
+      return new BrowserWorkspace(null, files);
+    }
+    if (!(await idbGet(db, 'meta', 'seeded'))) {
+      const files = legacyFiles() ?? new Map(Object.entries(examples).map(([k, v]) => [k.replace('../../examples/', ''), new TextEncoder().encode(v)]));
+      await idbPutAll(db, 'files', [...files]);
+      await idbPut(db, 'meta', 'seeded', true);
+      clearLegacy();
+    }
+    const ws = new BrowserWorkspace(db, new Map(await idbEntries<Uint8Array>(db, 'files')));
+    ws.backup = (await idbGet<BackupState>(db, 'meta', 'backup')) ?? ws.backup;
+    return ws;
+  }
+
   async list() {
     return [...this.files.keys()].sort();
   }
+  private get(p: string) {
+    const b = this.files.get(p);
+    if (b === undefined) throw new Error(`File not found: ${p}`);
+    return b;
+  }
   async readText(p: string) {
-    const t = this.files.get(p);
-    if (t === undefined) throw new Error(`File not found: ${p}`);
-    return t.startsWith('data:') ? new TextDecoder().decode(fromBase64(t.slice(t.indexOf(',') + 1))) : t;
+    return new TextDecoder().decode(this.get(p));
   }
   async readBytes(p: string) {
-    const t = this.files.get(p);
-    if (t === undefined) throw new Error(`File not found: ${p}`);
-    return t.startsWith('data:') ? fromBase64(t.slice(t.indexOf(',') + 1)) : new TextEncoder().encode(t);
+    return this.get(p);
   }
-  private store(p: string, v: string) {
-    this.files.set(p, v);
-    try {
-      localStorage.setItem(STORAGE_PREFIX + p, v);
-      localStorage.removeItem(DELETED_PREFIX + p);
-    } catch {
-      /* see constructor */
+
+  private async changed() {
+    this.backup = { ...this.backup, lastChange: Date.now() };
+    if (this.db) await idbPut(this.db, 'meta', 'backup', this.backup).catch(() => {});
+    this.onchange?.(this.backup);
+    // Ask the browser not to clear these files when space runs low (granted silently or not at all,
+    // except Firefox, which asks the user once).
+    if (!this.askedPersist && this.db) {
+      this.askedPersist = true;
+      navigator.storage?.persist?.().catch(() => {});
     }
+  }
+
+  async markBackedUp() {
+    this.backup = { ...this.backup, lastBackup: Date.now() };
+    if (this.db) await idbPut(this.db, 'meta', 'backup', this.backup).catch(() => {});
+    this.onchange?.(this.backup);
+  }
+
+  async writeBytes(p: string, data: Uint8Array) {
+    const copy = data.slice();
+    if (this.db) await idbPut(this.db, 'files', p, copy);
+    this.files.set(p, copy);
+    await this.changed();
   }
   async writeText(p: string, text: string) {
-    this.store(p, text);
-  }
-  async writeBytes(p: string, data: Uint8Array) {
-    this.store(p, 'data:application/octet-stream;base64,' + toBase64(data));
+    await this.writeBytes(p, new TextEncoder().encode(text));
   }
   async remove(p: string) {
+    if (this.db) await idbDelete(this.db, 'files', p);
     this.files.delete(p);
-    try {
-      localStorage.removeItem(STORAGE_PREFIX + p);
-      localStorage.setItem(DELETED_PREFIX + p, '1');
-    } catch {
-      /* see constructor */
-    }
+    await this.changed();
   }
   async rename(from: string, to: string) {
-    const v = this.files.get(from);
-    if (v === undefined) throw new Error(`File not found: ${from}`);
+    const v = this.get(from);
     if (this.files.has(to)) throw new Error(`File exists: ${to}`);
-    this.store(to, v);
+    await this.writeBytes(to, v);
     await this.remove(from);
+  }
+}
+
+/** Placeholder until the real workspace is open: lists nothing and refuses writes. */
+export class NoWorkspace implements Workspace {
+  name = '';
+  kind = 'browser' as const;
+  async list() {
+    return [];
+  }
+  async readText(p: string): Promise<string> {
+    throw new Error(`File not found: ${p}`);
+  }
+  async readBytes(p: string): Promise<Uint8Array> {
+    throw new Error(`File not found: ${p}`);
+  }
+  async writeText() {
+    throw new Error('No workspace open');
+  }
+  async writeBytes() {
+    throw new Error('No workspace open');
+  }
+  async remove() {
+    throw new Error('No workspace open');
+  }
+  async rename() {
+    throw new Error('No workspace open');
   }
 }
 
@@ -117,6 +223,8 @@ export class DemoWorkspace implements Workspace {
 
 type DirHandle = FileSystemDirectoryHandle & {
   values(): AsyncIterable<FileSystemDirectoryHandle | FileSystemFileHandle>;
+  queryPermission?(o: object): Promise<PermissionState>;
+  requestPermission?(o: object): Promise<PermissionState>;
 };
 
 export class BrowserFolderWorkspace implements Workspace {
@@ -130,7 +238,29 @@ export class BrowserFolderWorkspace implements Workspace {
   }
   static async pick(): Promise<BrowserFolderWorkspace> {
     const h = await (window as unknown as { showDirectoryPicker(o: object): Promise<DirHandle> }).showDirectoryPicker({ mode: 'readwrite' });
+    const db = await openDb();
+    if (db) await idbPut(db, 'meta', 'folder', h).catch(() => {});
     return new BrowserFolderWorkspace(h);
+  }
+
+  /** The folder used last time, if any. Browsers need the user's permission again to reopen it. */
+  static async remembered(): Promise<DirHandle | null> {
+    const db = await openDb();
+    return (db && (await idbGet<DirHandle>(db, 'meta', 'folder').catch(() => undefined))) || null;
+  }
+
+  /** Reopen a remembered folder; `ask` shows the browser's permission prompt (needs a click). */
+  static async reopen(h: DirHandle, ask: boolean): Promise<BrowserFolderWorkspace | null> {
+    const o = { mode: 'readwrite' };
+    let state = await h.queryPermission?.(o).catch(() => 'denied' as const);
+    if (state !== 'granted' && ask) state = await h.requestPermission?.(o).catch(() => 'denied' as const);
+    return state === 'granted' ? new BrowserFolderWorkspace(h) : null;
+  }
+
+  /** Start in browser storage next time. */
+  static async forget() {
+    const db = await openDb();
+    if (db) await idbDelete(db, 'meta', 'folder').catch(() => {});
   }
   async list() {
     const out: string[] = [];
@@ -202,6 +332,12 @@ export function tiny(): Tiny | undefined {
   return (window as unknown as { tiny?: Tiny }).tiny;
 }
 
+async function setTinyConfig(change: object) {
+  const api = tiny()!.api;
+  const cfg = ((await api.call('getConfig').catch(() => null)) ?? {}) as object;
+  await api.call('setConfig', { config: { ...cfg, ...change } });
+}
+
 export class TinyWorkspace implements Workspace {
   kind = 'folder' as const;
   constructor(private dir: string) {}
@@ -213,7 +349,23 @@ export class TinyWorkspace implements Workspace {
   }
   static async pick(): Promise<TinyWorkspace | null> {
     const dir = await tiny()!.dialog.pickFolder();
-    return dir ? new TinyWorkspace(dir) : null;
+    if (!dir) return null;
+    await setTinyConfig({ folder: dir });
+    return new TinyWorkspace(dir);
+  }
+
+  /**
+   * The folder to start in: the one used last time, or ~/Documents/Narwal Score
+   * (created if needed) on first launch or if the last one is gone.
+   */
+  static async start(): Promise<{ ws: TinyWorkspace; notice?: string }> {
+    const api = tiny()!.api;
+    const cfg = ((await api.call('getConfig').catch(() => null)) ?? {}) as { folder?: string };
+    if (cfg.folder && (await api.call('isDir', { path: cfg.folder }).catch(() => false))) return { ws: new TinyWorkspace(cfg.folder) };
+    const dir = (await api.call('defaultFolder')) as string;
+    await setTinyConfig({ folder: dir });
+    const notice = cfg.folder ? t('ws.folderMissing', { path: cfg.folder, fallback: dir }) : t('ws.defaultFolder', { path: dir });
+    return { ws: new TinyWorkspace(dir), notice };
   }
   private call<T>(method: string, params: object) {
     return tiny()!.api.call(method, { dir: this.dir, ...params }) as Promise<T>;
@@ -330,6 +482,23 @@ export async function copyWorkspace(from: Workspace, to: Workspace): Promise<num
   const files = await from.list();
   for (const f of files) await to.writeBytes(f, await from.readBytes(f));
   return files.length;
+}
+
+/**
+ * Files to restore from a .zip backup: songs, songbooks, pages, images and fonts, at their
+ * paths in the zip. A zip of a whole folder (as made by the Finder) has that folder as its
+ * only top-level entry, which is dropped.
+ */
+export function filesFromZip(bytes: Uint8Array): [string, Uint8Array][] {
+  let entries = Object.entries(unzipSync(bytes)).filter(
+    ([p]) => !p.endsWith('/') && !p.split('/').some((part) => part.startsWith('.') || part === '__MACOSX'),
+  );
+  const tops = new Set(entries.map(([p]) => p.split('/')[0]));
+  if (tops.size === 1 && entries.every(([p]) => p.includes('/'))) {
+    const top = [...tops][0].length + 1;
+    entries = entries.map(([p, b]) => [p.slice(top), b]);
+  }
+  return entries.filter(([p]) => isSong(p) || isSongbook(p) || isPage(p) || isImage(p) || isFontFile(p));
 }
 
 /** The whole workspace as a .zip file. */
