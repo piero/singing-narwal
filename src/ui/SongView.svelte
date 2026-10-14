@@ -119,7 +119,7 @@
   const sheets = $derived(laid ? impose(laid.pages, { kind: songSettings.imposition, foldLine: true }) : []);
 
   async function exportPdf() {
-    const pdf = await renderPdf(sheets, fonts, { title: laid?.title });
+    const pdf = await renderPdf(sheets, fonts, { title: laid?.title, creator: __APP_NAME__ });
     const base = path.split('/').pop()!.replace(/\.\w+$/, '');
     await saveFile(`${base}.pdf`, pdf, 'application/pdf');
   }

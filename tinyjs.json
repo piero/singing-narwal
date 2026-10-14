@@ -1,7 +1,7 @@
 {
-  "name": "narwal-score",
-  "title": "Narwal Score",
-  "id": "org.narwal.score",
+  "name": "narwal",
+  "title": "Singing Narwal",
+  "id": "org.narwal.app",
   "version": "0.1.0",
   "size": "1280x800",
   "backend": "tiny/backend/main.js",

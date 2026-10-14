@@ -1,4 +1,4 @@
-# Narwal Score
+# Singing Narwal
 
 Songs with chords, laid out for printing, assembled into songbooks.
 
@@ -18,7 +18,7 @@ Songs with chords, laid out for printing, assembled into songbooks.
 
 | | Where your files are kept | Good for |
 |---|---|---|
-| **Desktop app** (macOS) | a folder on your computer, `~/Documents/Narwal Score` by default | a group's real songbook |
+| **Desktop app** (macOS) | a folder on your computer, `~/Documents/SingingNarwal` by default | a group's real songbook |
 | **Website in Chrome or Edge** | a folder on your computer that you choose | the same, without installing anything |
 | **Website in Safari or Firefox** | inside the browser, until you download a backup | trying it out, quick edits |
 
@@ -30,7 +30,7 @@ Files kept inside the browser are easier to lose (see [below](#if-you-work-in-th
 
 ### Start
 
-- **Desktop app:** open it. On first launch it creates `~/Documents/Narwal Score` and
+- **Desktop app:** open it. On first launch it creates `~/Documents/SingingNarwal` and
   works there. To use another folder, click **Open folder…**; the app reopens it next
   time.
 - **Website, Chrome or Edge:** click **Open folder…** and pick (or create) a folder for
@@ -121,6 +121,6 @@ shows the date of your last backup and warns when something changed since.
 
 ## Licence
 
-Narwal Score is free software under the [GNU General Public License v3.0 or later](LICENSE).
+Singing Narwal is free software under the [GNU General Public License v3.0 or later](LICENSE).
 Songbooks you make with it are yours and are not covered by the GPL. The example songs in
 `examples/` are for local testing only: most lyrics are copyrighted.

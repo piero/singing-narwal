@@ -1,6 +1,6 @@
 # Technical overview
 
-How Narwal Score is built, how it stores files, and how it is distributed. For using the
+How Singing Narwal is built, how it stores files, and how it is distributed. For using the
 app, see the [README](../README.md); for working on the code, see the
 [developer guide](DEVELOPMENT.md).
 
@@ -239,15 +239,15 @@ to the workspace root with `/` separators.
 
 ### Browser storage (IndexedDB)
 
-- Database `narwal-score` (`src/ui/idb.ts`) with two stores: `files` (path → bytes) and
+- Database `narwal-db` (`src/ui/idb.ts`) with two stores: `files` (path → bytes) and
   `meta` (backup times, the remembered folder handle, a "seeded" flag).
 - All files are loaded into memory when the workspace opens; reads are served from
   memory. A write resolves only after the IndexedDB transaction commits, and **throws** if
   the browser refuses it, so the app never reports a failed save as saved.
 - On the first write of a session the app calls `navigator.storage.persist()`, asking the
   browser not to evict the data under storage pressure.
-- Earlier versions used `localStorage`; that data is moved to IndexedDB once and the old
-  keys are removed.
+- Earlier versions used `localStorage`, then a database named `narwal-score`; their data
+  is moved to `narwal-db` once, and the old storage is removed.
 - Without IndexedDB (some private windows), files are kept in memory only and the sidebar
   says so.
 - The data belongs to one origin (scheme + host + port). Sites under a shared origin,
@@ -276,8 +276,8 @@ folder.
 
 The desktop app never uses the webview's own storage. At startup it reads the last folder
 from TinyJS's settings store (`tiny.store`, kept in
-`~/Library/Application Support/org.narwal.score/`). If there is none, or it no longer
-exists, it creates `<Documents>/Narwal Score` (from `tiny.app.paths()`) and uses that.
+`~/Library/Application Support/org.narwal.app/`). If there is none, or it no longer
+exists, it creates `<Documents>/SingingNarwal` (from `tiny.app.paths()`) and uses that.
 
 ### Saving
 
@@ -304,7 +304,8 @@ space. There is no server code and nothing is uploaded: files stay on the user's
 
 ### Desktop app (TinyJS)
 
-`tinyjs.json` configures the app (id `org.narwal.score`), the frontend (`npm run build`,
+`tinyjs.json` configures the app (its name in `"title"`, which the web build and the CLI
+also read; id `org.narwal.app`), the frontend (`npm run build`,
 served from `dist/`) and the backend (`tiny/backend/main.js`, run by txiki.js).
 
 - The launcher loads the page from `file://` in the system WebKit. Local reads with

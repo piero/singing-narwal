@@ -8,6 +8,8 @@ import type { Sheet } from './impose';
 
 export interface PdfOptions {
   title?: string;
+  /** Application named in the PDF's metadata. */
+  creator?: string;
   /** Returns the bytes of an image referenced by the layout (PNG or JPEG). */
   loadImage?: (src: string) => Promise<Uint8Array>;
 }
@@ -15,7 +17,7 @@ export interface PdfOptions {
 export async function renderPdf(sheets: Sheet[], fonts: FontRegistry, opts: PdfOptions = {}): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   doc.registerFontkit(fontkit);
-  doc.setCreator('Narwal Score');
+  if (opts.creator) doc.setCreator(opts.creator);
   if (opts.title) doc.setTitle(opts.title);
 
   const embedded = new Map<string, PDFFont>();

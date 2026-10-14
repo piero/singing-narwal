@@ -4,7 +4,9 @@
 // Two object stores: "files" (workspace path → bytes) and "meta" (small values:
 // backup times, the folder handle).
 
-const DB_NAME = 'narwal-score';
+const DB_NAME = 'narwal-db';
+// Earlier name of the database; its contents are moved to DB_NAME once.
+const OLD_DB_NAME = 'narwal-score';
 
 export type Store = 'files' | 'meta';
 
@@ -12,13 +14,35 @@ let opening: Promise<IDBDatabase | null> | null = null;
 
 /** The database, or null if IndexedDB is not available (e.g. blocked by the browser). */
 export function openDb(): Promise<IDBDatabase | null> {
-  opening ??= new Promise((resolve) => {
+  opening ??= new Promise<{ db: IDBDatabase; created: boolean } | null>((resolve) => {
     try {
+      let created = false;
       const req = indexedDB.open(DB_NAME, 1);
-      req.onupgradeneeded = () => {
+      req.onupgradeneeded = (e) => {
+        created = e.oldVersion === 0;
         req.result.createObjectStore('files');
         req.result.createObjectStore('meta');
       };
+      req.onsuccess = () => resolve({ db: req.result, created });
+      req.onerror = () => resolve(null);
+      req.onblocked = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  }).then(async (r) => {
+    if (r?.created) await migrateOldDb(r.db).catch(() => {});
+    return r?.db ?? null;
+  });
+  return opening;
+}
+
+/** Open an existing database without creating it; null if it does not exist. */
+function openExisting(name: string): Promise<IDBDatabase | null> {
+  return new Promise((resolve) => {
+    try {
+      const req = indexedDB.open(name);
+      // A version change means the database did not exist: abort so it is not created.
+      req.onupgradeneeded = () => req.transaction?.abort();
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => resolve(null);
       req.onblocked = () => resolve(null);
@@ -26,7 +50,16 @@ export function openDb(): Promise<IDBDatabase | null> {
       resolve(null);
     }
   });
-  return opening;
+}
+
+/** Copy the files and settings of the database's earlier name, then delete it. */
+async function migrateOldDb(db: IDBDatabase) {
+  const old = await openExisting(OLD_DB_NAME);
+  if (!old) return;
+  const stores = (['files', 'meta'] as const).filter((s) => old.objectStoreNames.contains(s));
+  for (const s of stores) await idbPutAll(db, s, await idbEntries(old, s));
+  old.close();
+  indexedDB.deleteDatabase(OLD_DB_NAME);
 }
 
 function request<T>(db: IDBDatabase, store: Store, mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest): Promise<T> {

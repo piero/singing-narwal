@@ -1,6 +1,6 @@
 # Developer guide
 
-How to run, test and change Narwal Score. For how the pieces fit together, read the
+How to run, test and change Singing Narwal. For how the pieces fit together, read the
 [technical overview](TECHNICAL.md) first.
 
 ## Requirements
@@ -56,6 +56,7 @@ always returns bytes.
 ```
 src/
   main.ts                  mounts App.svelte
+  globals.d.ts             type of __APP_NAME__ (the product name, from tinyjs.json)
   App.svelte               sidebar, workspace startup and switching, file menu, error bar
   app.css                  global styles and colour tokens (light/dark)
   core/                    pure TypeScript: no DOM, no Node; used by the app and the CLI
@@ -130,6 +131,11 @@ npm test && npm run check && npm run build
 - **Every user-facing string goes in `i18n.svelte.ts`**, in both English and Italian. The
   type check fails if the Italian dictionary misses a key, or if code uses a key that
   doesn't exist.
+- **Don't hard-code the product name.** It lives only in `tinyjs.json` (`"title"`): Vite
+  injects it as `__APP_NAME__` and into `index.html` (`%APP_NAME%`), and the CLI reads it
+  from there. Internal identifiers use the generic `narwal` (database `narwal-db`,
+  storage keys `narwal:…`, app id `org.narwal.app`) and must not change with a rename:
+  changing them makes users lose their browser data or settings.
 - **Never report a failed save as saved.** Writes must throw on failure; autosaves go
   through `trackSave` so failures reach the error bar.
 - Match the style of the surrounding code: 2-space indentation, single quotes, short
@@ -196,7 +202,7 @@ like the rest of the project.
 - [x] Workspaces: a folder on disk (desktop app, Chrome/Edge) or browser storage
       (IndexedDB); folder remembered between sessions; backup reminder; restore from
       `.zip`; failed saves reported.
-- [x] Desktop app starts in `~/Documents/Narwal Score` or the last folder used.
+- [x] Desktop app starts in `~/Documents/SingingNarwal` or the last folder used.
 - [x] Rename and delete files, keeping songbooks consistent; save a copy of any file;
       download the workspace as a `.zip`.
 - [x] English and Italian interface; GPL-3.0-or-later.

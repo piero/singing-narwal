@@ -170,7 +170,7 @@
   async function downloadZip() {
     try {
       await settleSaves();
-      const name = workspace instanceof BrowserWorkspace ? `narwal-score-${new Date().toISOString().slice(0, 10)}.zip` : `${workspace.name}.zip`;
+      const name = workspace instanceof BrowserWorkspace ? `narwal-backup-${new Date().toISOString().slice(0, 10)}.zip` : `${workspace.name}.zip`;
       if ((await saveFile(name, await zipWorkspace(workspace), 'application/zip')) && workspace instanceof BrowserWorkspace) await workspace.markBackedUp();
     } catch (e) {
       error = t('error.op', { msg: (e as Error).message });
@@ -405,7 +405,7 @@
       {/key}
     {:else}
       <div class="empty">
-        <h1>Narwal Score</h1>
+        <h1>{__APP_NAME__}</h1>
         <p>{t('app.tagline')}</p>
         <p>{t('app.pick')}</p>
       </div>

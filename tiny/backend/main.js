@@ -41,7 +41,7 @@ const isDir = (path) => tjs.stat(path).then((s) => s.isDirectory, () => false);
 
 export const api = {
   isDir: async ({ path }) => isDir(path),
-  // Default workspace on first launch (~/Documents/Narwal Score), chosen by the page.
+  // Creates the default workspace folder on first launch (chosen by the page).
   makeDir: async ({ path }) => tjs.makeDir(path, { recursive: true }),
   list: async ({ dir }) => (await walk(dir, '', [])).sort(),
   // tjs.readFile always returns bytes (it has no encoding option).

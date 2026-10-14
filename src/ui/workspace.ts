@@ -335,6 +335,9 @@ export function tiny(): Tiny | undefined {
   return (window as unknown as { tiny?: Tiny }).tiny;
 }
 
+/** Workspace folder created in ~/Documents on the desktop app's first launch. */
+const DEFAULT_FOLDER = 'SingingNarwal';
+
 export class TinyWorkspace implements Workspace {
   kind = 'folder' as const;
   constructor(private dir: string) {}
@@ -352,14 +355,14 @@ export class TinyWorkspace implements Workspace {
   }
 
   /**
-   * The folder to start in: the one used last time, or ~/Documents/Narwal Score
+   * The folder to start in: the one used last time, or ~/Documents/SingingNarwal
    * (created if needed) on first launch or if the last one is gone.
    */
   static async start(): Promise<{ ws: TinyWorkspace; notice?: string }> {
     const tj = tiny()!;
     const last = (await tj.store.get('folder').catch(() => null)) as string | null;
     if (last && (await tj.api.call('isDir', { path: last }).catch(() => false))) return { ws: new TinyWorkspace(last) };
-    const dir = `${(await tj.app.paths()).documents}/Narwal Score`;
+    const dir = `${(await tj.app.paths()).documents}/${DEFAULT_FOLDER}`;
     await tj.api.call('makeDir', { path: dir });
     await tj.store.set('folder', dir);
     const notice = last ? t('ws.folderMissing', { path: last, fallback: dir }) : t('ws.defaultFolder', { path: dir });

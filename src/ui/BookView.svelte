@@ -143,7 +143,7 @@
 
   async function exportPdf() {
     if (!built || !book) return;
-    const pdf = await renderPdf(built.sheets, fonts, { title: book.title, loadImage: loader.readBytes });
+    const pdf = await renderPdf(built.sheets, fonts, { title: book.title, creator: __APP_NAME__, loadImage: loader.readBytes });
     await saveFile(`${path.split('/').pop()!.replace(/\.songbook\.ya?ml$/i, '')}.pdf`, pdf, 'application/pdf');
   }
 </script>

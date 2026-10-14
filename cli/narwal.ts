@@ -33,6 +33,8 @@ const { values, positionals } = parseArgs({
 });
 
 const fontDir = resolve(import.meta.dirname, '../public/fonts');
+// Product name, from tinyjs.json like the app.
+const appName: string = JSON.parse(await readFile(resolve(import.meta.dirname, '../tinyjs.json'), 'utf8')).title;
 const fonts = await loadBundledFonts(async (f) => new Uint8Array(await readFile(join(fontDir, f))));
 
 if (positionals[0] === 'import') {
@@ -81,7 +83,7 @@ if (values.columns && isBook) book.columns = values.columns as Columns;
 
 const built = await buildSongbook(book, fonts, loader);
 for (const w of built.warnings) console.warn('warning:', w);
-const pdf = await renderPdf(built.sheets, fonts, { title: book.title, loadImage: loader.readBytes });
+const pdf = await renderPdf(built.sheets, fonts, { title: book.title, creator: appName, loadImage: loader.readBytes });
 const out = values.output ?? input.replace(/\.(cho|chordpro|chopro|ya?ml)$/i, '') + '.pdf';
 await writeFile(out, pdf);
 console.log(`${out}: ${built.pages.length} pages on ${built.sheets.length} sheets`);
