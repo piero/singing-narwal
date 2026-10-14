@@ -137,6 +137,11 @@
     }
   }
 
+  /** Files given from outside the dialog (e.g. opened with the desktop app from Finder). */
+  export async function addFiles(list: { name: string; bytes: Uint8Array }[]) {
+    await add(list);
+  }
+
   const readAll = (list: File[]) => Promise.all(list.map(async (f) => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) })));
 
   async function pick() {

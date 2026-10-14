@@ -324,6 +324,9 @@ served from `dist/`) and the backend (`tiny/backend/main.js`, run by txiki.js).
   `fetch` succeed with status 0 there, which the font loader accepts.
 - The backend exposes file operations on the workspace folder (list, read, write, rename,
   remove), plus reading and writing files the user picked in native dialogs.
+- `tinyjs.json` registers `.cho`, `.chordpro`, `.odt` and `.odg` with macOS. Files opened
+  from Finder or dropped on the Dock icon arrive through `tiny.app.onOpenFiles` (also at
+  launch) and open the import dialog once the workspace and fonts are ready.
 - `tinyjs build --dmg` produces a `.dmg` in `.build/`. By default it runs only on the CPU
   type of the Mac that built it; it is signed ad-hoc, so macOS warns about an unidentified
   developer unless a Developer ID is configured (`signIdentity`). Updates are not set up yet.

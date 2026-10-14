@@ -47,7 +47,8 @@ The sidebar always shows where the open workspace is.
 ### Bring in songs you already have
 
 1. Click **Import…** and choose files, drag them onto the dialog, or paste text and click
-   **Add pasted text**.
+   **Add pasted text**. In the desktop app you can also open `.odt`, `.odg` and `.cho`
+   files from Finder (**Open With → Singing Narwal**) or drop them on its Dock icon.
 2. The files are listed under *To import*. Click a song to see its converted text (in
    ChordPro) and correct it if needed; ✕ leaves a file out.
 3. Click **Done** to copy them into the workspace, or **Cancel** to import nothing.

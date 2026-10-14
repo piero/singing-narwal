@@ -27,6 +27,7 @@
     pickLocalFiles,
     saveFile,
     tiny,
+    readAbsoluteFiles,
     zipSongbook,
     zipWorkspace,
     type Workspace,
@@ -41,6 +42,21 @@
   let filter = $state('');
   let error = $state('');
   let importing = $state(false);
+  let importDialog = $state<{ addFiles: (list: { name: string; bytes: Uint8Array }[]) => Promise<void> }>();
+  /** Files opened with the desktop app from Finder or the Dock, waiting for the import dialog. */
+  let opened: { name: string; bytes: Uint8Array }[] = $state([]);
+  tiny()?.app.onOpenFiles?.(async (paths) => {
+    try {
+      opened.push(...(await readAbsoluteFiles(paths)));
+      importing = true;
+    } catch (e) {
+      error = t('error.op', { msg: (e as Error).message });
+    }
+  });
+  // The dialog appears once the workspace and its fonts are ready (files can arrive at launch).
+  $effect(() => {
+    if (importDialog && opened.length) importDialog.addFiles(opened.splice(0));
+  });
   let menu = $state<{ path: string; x: number; y: number } | null>(null);
   let fontKey = '';
 
@@ -455,6 +471,7 @@
 
 {#if importing && fonts}
   <ImportDialog
+    bind:this={importDialog}
     {workspace}
     {fonts}
     {files}

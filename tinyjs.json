@@ -12,5 +12,5 @@
     "dev": "npm run dev",
     "devUrl": "http://127.0.0.1:5173"
   },
-  "fileExtensions": ["cho", "chordpro", "yaml", "odt"]
+  "fileExtensions": ["cho", "chordpro", "odt", "odg"]
 }
