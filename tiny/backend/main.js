@@ -37,36 +37,15 @@ function fromBase64(s) {
   return out;
 }
 
-// App settings (the last folder used), outside the browser engine's storage.
-function home() {
-  return tjs.homeDir ?? tjs.env?.HOME ?? tjs.getenv?.('HOME');
-}
-const configFile = () => `${home()}/Library/Application Support/Narwal Score/config.json`;
-
 const isDir = (path) => tjs.stat(path).then((s) => s.isDirectory, () => false);
 
 export const api = {
-  getConfig: async () => {
-    try {
-      return JSON.parse(await tjs.readFile(configFile(), 'utf8'));
-    } catch {
-      return {};
-    }
-  },
-  setConfig: async ({ config }) => {
-    const file = configFile();
-    await ensureParent(file);
-    await tjs.writeFile(file, JSON.stringify(config, null, 2));
-  },
   isDir: async ({ path }) => isDir(path),
-  // Default workspace on first launch: ~/Documents/Narwal Score.
-  defaultFolder: async () => {
-    const dir = `${home()}/Documents/Narwal Score`;
-    await tjs.makeDir(dir, { recursive: true });
-    return dir;
-  },
+  // Default workspace on first launch (~/Documents/Narwal Score), chosen by the page.
+  makeDir: async ({ path }) => tjs.makeDir(path, { recursive: true }),
   list: async ({ dir }) => (await walk(dir, '', [])).sort(),
-  readText: async ({ dir, path }) => tjs.readFile(resolve(dir, path), 'utf8'),
+  // tjs.readFile always returns bytes (it has no encoding option).
+  readText: async ({ dir, path }) => new TextDecoder().decode(await tjs.readFile(resolve(dir, path))),
   readBase64: async ({ dir, path }) => toBase64(await tjs.readFile(resolve(dir, path))),
   writeText: async ({ dir, path, text }) => {
     const file = resolve(dir, path);

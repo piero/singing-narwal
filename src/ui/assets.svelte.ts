@@ -20,8 +20,10 @@ export async function loadFonts(workspace: Workspace, files: string[]): Promise<
     await Promise.all(
       BUNDLED_FONTS.map(async (id) => {
         const res = await fetch(`${import.meta.env.BASE_URL}fonts/${id}.ttf`);
-        if (!res.ok) throw new Error(`${id}: HTTP ${res.status}`);
-        bundled.set(id, new Uint8Array(await res.arrayBuffer()));
+        // The desktop app loads the page from file://, where a successful read has status 0.
+        const data = res.ok || res.status === 0 ? new Uint8Array(await res.arrayBuffer()) : null;
+        if (!data?.length) throw new Error(`${id}: HTTP ${res.status}`);
+        bundled.set(id, data);
       }),
     );
   }

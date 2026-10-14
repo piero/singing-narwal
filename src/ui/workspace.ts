@@ -321,21 +321,18 @@ export class BrowserFolderWorkspace implements Workspace {
 
 interface Tiny {
   api: { call(method: string, params?: object): Promise<unknown> };
+  /** Persistent settings, kept by TinyJS in ~/Library/Application Support/<app id>/. */
+  store: { get(key: string): Promise<unknown>; set(key: string, value: unknown): Promise<void> };
+  app: { paths(): Promise<{ home: string; documents: string; data: string }> };
   dialog: {
     pickFolder(): Promise<string | null>;
-    saveFile(o?: object): Promise<string | null>;
-    openFiles(o?: object): Promise<string[] | null>;
+    saveFile(o?: { types?: string[] }): Promise<string | null>;
+    openFiles(o?: { types?: string[] }): Promise<string[] | null>;
   };
 }
 
 export function tiny(): Tiny | undefined {
   return (window as unknown as { tiny?: Tiny }).tiny;
-}
-
-async function setTinyConfig(change: object) {
-  const api = tiny()!.api;
-  const cfg = ((await api.call('getConfig').catch(() => null)) ?? {}) as object;
-  await api.call('setConfig', { config: { ...cfg, ...change } });
 }
 
 export class TinyWorkspace implements Workspace {
@@ -350,7 +347,7 @@ export class TinyWorkspace implements Workspace {
   static async pick(): Promise<TinyWorkspace | null> {
     const dir = await tiny()!.dialog.pickFolder();
     if (!dir) return null;
-    await setTinyConfig({ folder: dir });
+    await tiny()!.store.set('folder', dir);
     return new TinyWorkspace(dir);
   }
 
@@ -359,12 +356,13 @@ export class TinyWorkspace implements Workspace {
    * (created if needed) on first launch or if the last one is gone.
    */
   static async start(): Promise<{ ws: TinyWorkspace; notice?: string }> {
-    const api = tiny()!.api;
-    const cfg = ((await api.call('getConfig').catch(() => null)) ?? {}) as { folder?: string };
-    if (cfg.folder && (await api.call('isDir', { path: cfg.folder }).catch(() => false))) return { ws: new TinyWorkspace(cfg.folder) };
-    const dir = (await api.call('defaultFolder')) as string;
-    await setTinyConfig({ folder: dir });
-    const notice = cfg.folder ? t('ws.folderMissing', { path: cfg.folder, fallback: dir }) : t('ws.defaultFolder', { path: dir });
+    const tj = tiny()!;
+    const last = (await tj.store.get('folder').catch(() => null)) as string | null;
+    if (last && (await tj.api.call('isDir', { path: last }).catch(() => false))) return { ws: new TinyWorkspace(last) };
+    const dir = `${(await tj.app.paths()).documents}/Narwal Score`;
+    await tj.api.call('makeDir', { path: dir });
+    await tj.store.set('folder', dir);
+    const notice = last ? t('ws.folderMissing', { path: last, fallback: dir }) : t('ws.defaultFolder', { path: dir });
     return { ws: new TinyWorkspace(dir), notice };
   }
   private call<T>(method: string, params: object) {
@@ -450,7 +448,9 @@ export async function importImage(ws: Workspace, files: string[]): Promise<strin
 export async function saveFile(name: string, data: Uint8Array, mime: string): Promise<boolean> {
   const t = tiny();
   if (t) {
-    const path = await t.dialog.saveFile({ name });
+    // The native panel takes no suggested name; the type makes macOS add the extension.
+    const ext = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1) : '';
+    const path = await t.dialog.saveFile(ext ? { types: [ext] } : {});
     if (!path) return false;
     await t.api.call('writeAbsolute', { path, data: toBase64(data) });
     return true;
