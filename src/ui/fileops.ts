@@ -86,7 +86,7 @@ export async function renameSong(ws: Workspace, files: string[], path: string, t
   return moveFile(ws, files, path, target);
 }
 
-/** Rename a songbook or template file, keeping its extension. Returns the new path. */
+/** Rename a songbook or page file, keeping its extension. Returns the new path. */
 export async function renameFile(ws: Workspace, files: string[], path: string, name: string): Promise<string> {
   const ext = /(\.(songbook|page)\.ya?ml|\.[^./]+)$/i.exec(path)?.[0] ?? '';
   const clean = name.replace(/[/\\:]/g, '-').trim();

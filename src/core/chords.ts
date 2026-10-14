@@ -19,6 +19,8 @@ export interface Note {
 export interface Chord {
   root: Note;
   minor: boolean;
+  /** How the minor was written: "m" (Am, Lam), "-" (A-, La-) or "min". */
+  minorMark?: string;
   /** Everything after the root and the minor marker, e.g. "7", "maj7", "sus4", "(addB)". */
   suffix: string;
   bass?: Note;
@@ -59,9 +61,11 @@ export function parseChord(text: string): Chord | null {
   if (!head) return null;
   let rest = head.rest;
   let minor = false;
+  let minorMark: string | undefined;
   const mm = MINOR_RE.exec(rest);
   if (mm) {
     minor = true;
+    minorMark = /^[–−]$/.test(mm[0]) ? '-' : mm[0];
     rest = rest.slice(mm[0].length);
   }
   let bass: Note | undefined;
@@ -75,7 +79,7 @@ export function parseChord(text: string): Chord | null {
   }
   // Reject things that merely start with a note name, e.g. "Rit." or "Intro".
   if (/^[a-z]{2,}/i.test(rest) && !/^(maj|min|sus|add|dim|aug|m)/i.test(rest)) return null;
-  return { root: head.note, minor, suffix: rest, bass };
+  return { root: head.note, minor, minorMark, suffix: rest, bass };
 }
 
 // Spelling used when transposing: which accidental to prefer for each pitch class.
@@ -113,8 +117,9 @@ export function noteName(n: Note, notation: Notation): string {
   return base + (n.accidental > 0 ? '#' : n.accidental < 0 ? 'b' : '');
 }
 
+/** Minor chords keep the marker they were written with; "m" by default (Lam, Am). */
 export function formatChord(c: Chord, notation: Notation): string {
-  const minor = c.minor ? (notation === 'italian' ? '-' : 'm') : '';
+  const minor = c.minor ? (c.minorMark ?? 'm') : '';
   const bass = c.bass ? '/' + noteName(c.bass, notation) : '';
   return noteName(c.root, notation) + minor + c.suffix + bass;
 }
@@ -136,7 +141,10 @@ export function renderChord(text: string, opts: ChordRenderOptions): string {
   if (opts.notation === 'original' && opts.transpose % 12 === 0) return text;
   const c = parseChord(text);
   if (!c) return text;
-  const notation = opts.notation === 'original' ? chordNotation(text) : opts.notation;
+  const from = chordNotation(text);
+  const notation = opts.notation === 'original' ? from : opts.notation;
+  // "La-" is common in Italian songbooks, "A-" much less so in English ones.
+  if (from === 'italian' && notation === 'english' && c.minorMark === '-') c.minorMark = 'm';
   return formatChord(transposeChord(c, opts.transpose, opts.spelling ?? 'auto'), notation);
 }
 

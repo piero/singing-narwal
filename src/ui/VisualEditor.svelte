@@ -11,9 +11,11 @@
   // - Click above a letter to add a chord; type "[Am]" inline works too.
   // - Drag a chord, or select it and use ←/→, to anchor it to another letter.
   // - Double-click (or Enter on) a chord to rename it; Delete removes it.
-  // - Lines starting with "{" are ChordPro directives, e.g. {start_of_chorus}.
+  // - Sections (chorus, verse, bridge), chorus repeats, breaks and notes are added
+  //   from the toolbar and shown as markers; in the file they are ChordPro
+  //   directives such as {start_of_chorus}. Other directives can be typed as "{…}".
   import { tick } from 'svelte';
-  import { t } from './i18n.svelte';
+  import { t, type Key } from './i18n.svelte';
   import { parseLyricsLine, parseSong, serializeLine, type ChordAnchor, type SongDoc, type SongLine } from '../core/chordpro';
 
   let { doc, onchange, focusRequest }: { doc: SongDoc; onchange: (d: SongDoc) => void; focusRequest?: { line: number; n: number } } = $props();
@@ -61,7 +63,10 @@
     return text.length + Math.max(0, Math.round((x - prev) / space));
   }
 
-  let inputs: HTMLInputElement[] = $state([]);
+  /** Focusable element of each line: the text field, or the marker. */
+  let inputs: HTMLElement[] = $state([]);
+  /** Line holding the cursor, target of the toolbar actions. */
+  let cursor = $state(0);
   let selected: { line: number; idx: number } | null = $state(null);
   let editing: { line: number; idx: number | null; pos: number; value: string } | null = $state(null);
   let drag: { line: number; idx: number; startX: number; pos: number; moved: boolean } | null = $state(null);
@@ -146,7 +151,7 @@
     setLine(i, makeLine(value, chords));
     if (value !== typed) {
       await tick();
-      inputs[i]?.setSelectionRange(caret, caret);
+      (inputs[i] as HTMLInputElement | undefined)?.setSelectionRange(caret, caret);
     }
   }
 
@@ -154,9 +159,13 @@
     await tick();
     const el = inputs[i];
     if (!el) return;
-    el.focus();
-    const c = Math.min(caret, el.value.length);
-    el.setSelectionRange(c, c);
+    // Markers with a field (label, note) focus the field.
+    const field = el instanceof HTMLInputElement ? el : el.querySelector('input');
+    (field ?? el).focus();
+    if (el instanceof HTMLInputElement) {
+      const c = Math.min(caret, el.value.length);
+      el.setSelectionRange(c, c);
+    }
   }
 
   $effect(() => {
@@ -230,6 +239,184 @@
     }
   }
 
+  // --- Sections and markers ----------------------------------------------
+
+  type Marker = { type: 'start' | 'end'; env: string } | { type: 'repeat' } | { type: 'break'; page: boolean } | { type: 'note' };
+
+  function markerOf(l: SongLine): Marker | null {
+    if (l.kind !== 'directive') return null;
+    const m = /^(start|end)_of_(chorus|verse|bridge|tab|grid)$/.exec(l.name);
+    if (m) return { type: m[1] as 'start' | 'end', env: m[2] };
+    if (l.name === 'chorus') return { type: 'repeat' };
+    if (l.name === 'column_break') return { type: 'break', page: false };
+    if (l.name === 'new_page' || l.name === 'new_physical_page') return { type: 'break', page: true };
+    if (/^comment(_italic|_box)?$/.test(l.name)) return { type: 'note' };
+    return null;
+  }
+
+  const ENV_LABEL: Record<string, Key> = {
+    chorus: 'sec.chorus',
+    verse: 'sec.verse',
+    bridge: 'sec.bridge',
+    tab: 'sec.tab',
+    grid: 'sec.tab',
+  };
+
+  const isContent = (l: SongLine) => l.kind === 'lyrics' || l.kind === 'comment' || (l.kind === 'directive' && markerOf(l)?.type === 'note');
+
+  /** Start/end markers of the section containing line i, if any. */
+  function enclosing(i: number): { start: number; end: number; env: string } | null {
+    for (let s = i; s >= 0; s--) {
+      const m = markerOf(doc.lines[s]);
+      if (m?.type === 'end' && s !== i) return null;
+      if (m?.type === 'start') {
+        for (let e = Math.max(i, s + 1); e < doc.lines.length; e++) {
+          const me = markerOf(doc.lines[e]);
+          if (me?.type === 'end') return { start: s, end: e, env: m.env };
+          if (me?.type === 'start') break;
+        }
+        return null;
+      }
+    }
+    return null;
+  }
+
+  /** The paragraph around line i: consecutive lyrics/note lines. */
+  function paragraph(i: number): [number, number] {
+    let a = i;
+    let b = i;
+    while (a > 0 && isContent(doc.lines[a - 1])) a--;
+    while (b + 1 < doc.lines.length && isContent(doc.lines[b + 1])) b++;
+    return [a, b];
+  }
+
+  const at = () => Math.min(Math.max(0, cursor), Math.max(0, doc.lines.length - 1));
+  const currentEnv = $derived(doc.lines.length ? (enclosing(at())?.env ?? '') : '');
+
+  /** Wrap the current paragraph in a section, change its kind, or unwrap it. */
+  function toggleSection(env: string) {
+    const lines = [...doc.lines];
+    const i = at();
+    const enc = enclosing(i);
+    if (enc) {
+      if (enc.env === env) {
+        lines.splice(enc.end, 1);
+        lines.splice(enc.start, 1);
+        update(lines);
+        cursor = Math.max(0, i - 1);
+      } else {
+        lines[enc.start] = { kind: 'directive', name: `start_of_${env}`, value: (lines[enc.start] as { value: string }).value };
+        lines[enc.end] = { kind: 'directive', name: `end_of_${env}`, value: '' };
+        update(lines);
+      }
+      return;
+    }
+    if (!lines.length || !isContent(lines[i])) {
+      // Nothing to wrap: open an empty section here.
+      lines.splice(i + (lines.length ? 1 : 0), 0, { kind: 'directive', name: `start_of_${env}`, value: '' }, { kind: 'empty' }, { kind: 'directive', name: `end_of_${env}`, value: '' });
+      update(lines);
+      focusLine(i + (doc.lines.length ? 2 : 1), 0);
+      return;
+    }
+    const [a, b] = paragraph(i);
+    lines.splice(b + 1, 0, { kind: 'directive', name: `end_of_${env}`, value: '' });
+    lines.splice(a, 0, { kind: 'directive', name: `start_of_${env}`, value: '' });
+    update(lines);
+    cursor = i + 1;
+  }
+
+  /** Insert a marker after the current paragraph (or section), as its own paragraph. */
+  function insertAfter(line: SongLine) {
+    const lines = [...doc.lines];
+    const i = at();
+    const enc = enclosing(i);
+    let pos = enc ? enc.end + 1 : lines.length && isContent(lines[i]) ? paragraph(i)[1] + 1 : i + 1;
+    pos = Math.min(pos, lines.length);
+    const add: SongLine[] = [];
+    if (pos > 0 && lines[pos - 1]?.kind !== 'empty') add.push({ kind: 'empty' });
+    add.push(line);
+    lines.splice(pos, 0, ...add);
+    update(lines);
+    focusLine(pos + add.length - 1, 0);
+  }
+
+  /** Insert a break before the current paragraph (or section). */
+  function insertBreak(page: boolean) {
+    const lines = [...doc.lines];
+    const i = at();
+    const enc = enclosing(i);
+    const pos = enc ? enc.start : lines.length && isContent(lines[i]) ? paragraph(i)[0] : i;
+    lines.splice(pos, 0, { kind: 'directive', name: page ? 'new_page' : 'column_break', value: '' });
+    update(lines);
+    cursor = i + 1;
+  }
+
+  function insertNote() {
+    const lines = [...doc.lines];
+    const i = at();
+    const note: SongLine = { kind: 'directive', name: 'comment', value: '' };
+    if (lines[i]?.kind === 'empty') lines[i] = note;
+    else lines.splice(i + 1, 0, note);
+    const pos = lines[i] === note ? i : i + 1;
+    update(lines);
+    focusLine(pos, 0);
+  }
+
+  /** Remove a marker; removing either end of a section removes both. */
+  function removeMarker(i: number) {
+    const lines = [...doc.lines];
+    const m = markerOf(lines[i]);
+    if (m?.type === 'start' || m?.type === 'end') {
+      const enc = enclosing(m.type === 'start' ? i + 1 : i - 1) ?? (m.type === 'start' ? enclosing(i) : null);
+      if (enc) {
+        lines.splice(enc.end, 1);
+        lines.splice(enc.start, 1);
+        update(lines);
+        focusLine(Math.max(0, Math.min(i, lines.length - 1)), 0);
+        return;
+      }
+    }
+    lines.splice(i, 1);
+    update(lines);
+    focusLine(Math.max(0, Math.min(i, lines.length - 1)), 0);
+  }
+
+  function setValue(i: number, value: string) {
+    const l = doc.lines[i];
+    if (l.kind === 'directive') setLine(i, { ...l, value });
+  }
+
+  function markerKey(i: number, e: KeyboardEvent) {
+    const input = e.target instanceof HTMLInputElement ? e.target : null;
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const lines = [...doc.lines];
+      lines.splice(i + 1, 0, { kind: 'empty' });
+      update(lines);
+      focusLine(i + 1, 0);
+    } else if ((e.key === 'Backspace' || e.key === 'Delete') && (!input || input.value === '')) {
+      e.preventDefault();
+      removeMarker(i);
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      const j = visibleNeighbour(i, e.key === 'ArrowUp' ? -1 : 1);
+      if (j < 0) return;
+      e.preventDefault();
+      focusLine(j, 0);
+    }
+  }
+
+  /** First line of the chorus a repeat refers to, shown as a hint. */
+  function chorusHint(i: number): string {
+    for (let j = i - 1; j >= 0; j--) {
+      const m = markerOf(doc.lines[j]);
+      if (m?.type === 'start' && m.env === 'chorus') {
+        const first = doc.lines.slice(j + 1).find((l) => l.kind === 'lyrics');
+        return first && first.kind === 'lyrics' ? first.text.trim() + '…' : '';
+      }
+    }
+    return '';
+  }
+
   // --- Chords -------------------------------------------------------------
 
   function rowX(e: PointerEvent | MouseEvent, row: HTMLElement) {
@@ -262,6 +449,11 @@
       chords = name ? chords.map((c, k) => (k === idx ? { ...c, chord: name } : c)) : chords.filter((_, k) => k !== idx);
     }
     setLine(line, makeLine(text, chords));
+  }
+
+  /** Keep a chord being typed when the user clicks anywhere else, not only on Enter. */
+  function commitOutside(e: PointerEvent) {
+    if (editing && !(e.target as HTMLElement).closest?.('.chord-input')) commitEdit();
   }
 
   function chipDown(i: number, idx: number, e: PointerEvent) {
@@ -318,15 +510,63 @@
   }
 </script>
 
+<svelte:document onpointerdowncapture={commitOutside} />
+
+<div class="toolbar" role="toolbar" aria-label={t('sec.toolbar')}>
+  <span class="group">
+    {#each ['chorus', 'verse', 'bridge'] as env (env)}
+      <button class:active={currentEnv === env} class="env-{env}" title={t(currentEnv === env ? 'sec.unwrapHelp' : 'sec.wrapHelp', { name: t(ENV_LABEL[env]) })} onmousedown={(e) => e.preventDefault()} onclick={() => toggleSection(env)}>{t(ENV_LABEL[env])}</button>
+    {/each}
+  </span>
+  <span class="group">
+    <button title={t('sec.repeatHelp')} onmousedown={(e) => e.preventDefault()} onclick={() => insertAfter({ kind: 'directive', name: 'chorus', value: '' })}>↻ {t('sec.repeat')}</button>
+    <button title={t('sec.noteHelp')} onmousedown={(e) => e.preventDefault()} onclick={insertNote}>✎ {t('sec.note')}</button>
+  </span>
+  <span class="group">
+    <button title={t('sec.colbHelp')} onmousedown={(e) => e.preventDefault()} onclick={() => insertBreak(false)}>⇥ {t('sec.colb')}</button>
+    <button title={t('sec.pageHelp')} onmousedown={(e) => e.preventDefault()} onclick={() => insertBreak(true)}>⤓ {t('sec.page')}</button>
+  </span>
+</div>
+
 <div class="editor">
   {#each doc.lines as l, i (i)}
     {#if !(l.kind === 'directive' && META.has(l.name))}
       {@const v = lyr(l)}
+      {@const m = markerOf(l)}
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_static_element_interactions -->
       <div
         class="line {l.kind} env-{envs[i] || 'none'}"
         class:env={envs[i]}
+        class:current={cursor === i}
+        onfocusin={() => (cursor = i)}
       >
-        {#if l.kind === 'lyrics' || l.kind === 'empty'}
+        {#if m && l.kind === 'directive'}
+          <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+          <div
+            class="marker {m.type} {m.type === 'start' || m.type === 'end' ? 'env-' + m.env : ''}"
+            tabindex={m.type === 'end' || m.type === 'break' ? 0 : -1}
+            role="group"
+            bind:this={inputs[i]}
+            onkeydown={(e) => markerKey(i, e)}
+          >
+            {#if m.type === 'start'}
+              <span class="tag">{t(ENV_LABEL[m.env])}</span>
+              <input class="label" value={l.value} placeholder={t('sec.labelPlaceholder')} oninput={(e) => setValue(i, e.currentTarget.value)} />
+            {:else if m.type === 'end'}
+              <span class="tag end">{t('sec.end', { name: t(ENV_LABEL[m.env]) })}</span>
+            {:else if m.type === 'repeat'}
+              <span class="tag">↻ {t('sec.repeat')}</span>
+              <input class="label" value={l.value} placeholder={chorusHint(i) || t('sec.labelPlaceholder')} oninput={(e) => setValue(i, e.currentTarget.value)} />
+            {:else if m.type === 'break'}
+              <span class="tag">{m.page ? '⤓ ' + t('sec.page') : '⇥ ' + t('sec.colb')}</span>
+              <span class="rule"></span>
+            {:else}
+              <span class="tag">✎ {t('sec.note')}</span>
+              <input class="note" value={l.value} placeholder={t('sec.notePlaceholder')} oninput={(e) => setValue(i, e.currentTarget.value)} />
+            {/if}
+            <button class="remove" title={t('book.remove')} onclick={() => removeMarker(i)}>✕</button>
+          </div>
+        {:else if l.kind === 'lyrics' || l.kind === 'empty'}
           {@const xs = chipXs(v.text, v.chords, (k) => (drag && drag.line === i && drag.idx === k ? drag.pos : v.chords[k].pos))}
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div class="chordrow" onpointerdown={(e) => startAdd(i, e)} onmousedown={(e) => e.target === e.currentTarget && e.preventDefault()} title={t('song.addChord')}>
@@ -364,6 +604,7 @@
             {/if}
           </div>
         {/if}
+        {#if !(m && l.kind === 'directive')}
         <input
           class="text"
           bind:this={inputs[i]}
@@ -373,6 +614,7 @@
           spellcheck="false"
           placeholder={l.kind === 'empty' ? '' : undefined}
         />
+        {/if}
       </div>
     {/if}
   {/each}
@@ -380,6 +622,107 @@
 </div>
 
 <style>
+  .toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 8px 16px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--line);
+    font-size: 13px;
+  }
+  .toolbar .group {
+    display: inline-flex;
+    gap: 4px;
+  }
+  .toolbar button {
+    border: 1px solid var(--line);
+    background: var(--bg);
+    color: var(--fg);
+    border-radius: 5px;
+    padding: 2px 9px;
+    cursor: pointer;
+  }
+  .toolbar button:hover {
+    background: var(--chip-hover);
+  }
+  .toolbar button.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--on-accent);
+  }
+  .toolbar button.env-chorus:not(.active) {
+    border-left: 3px solid var(--chorus);
+  }
+  .marker {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font: 12px -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    color: var(--muted);
+    padding: 3px 0;
+    outline: none;
+  }
+  .marker:focus-visible,
+  .marker:focus-within {
+    color: var(--fg);
+  }
+  .marker .tag {
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .marker.env-chorus .tag {
+    color: var(--chorus);
+  }
+  .marker .tag.end {
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .marker input {
+    font: inherit;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--fg);
+    padding: 1px 4px;
+    border-radius: 3px;
+    min-width: 0;
+  }
+  .marker input:hover,
+  .marker input:focus {
+    border-color: var(--line);
+    outline: none;
+  }
+  .marker .label {
+    width: 14em;
+  }
+  .marker .note {
+    flex: 1;
+    font: italic 15px 'LiberationSerif-Italic', 'Times New Roman', serif;
+  }
+  .marker .rule {
+    flex: 1;
+    border-top: 1px dashed var(--muted);
+  }
+  .marker .remove {
+    margin-left: auto;
+    border: none;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+    opacity: 0;
+    padding: 0 4px;
+  }
+  .line:hover .remove,
+  .marker:focus-within .remove,
+  .marker:focus .remove {
+    opacity: 1;
+  }
   .editor {
     font: 16px 'LiberationSerif-Regular', 'Times New Roman', serif;
     padding: 12px 16px 40px;

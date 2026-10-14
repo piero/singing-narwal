@@ -55,7 +55,8 @@ Verse line one
   });
 
   it('normalises chord spelling', () => {
-    expect(importText('SIm  LA\nCiao bella', 'x.txt').chordpro).toContain('[Si-]Ciao [La]bella');
+    expect(importText('SIm  LA\nCiao bella', 'x.txt').chordpro).toContain('[Sim]Ciao [La]bella');
+    expect(importText('LA-  RE\nCiao bella', 'x.txt').chordpro).toContain('[La-]Ciao [Re]bella');
   });
 });
 

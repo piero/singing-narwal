@@ -19,7 +19,7 @@ import type { FontRegistry } from './fonts';
 import { PAGE_SIZES, impose, type ImpositionKind, type PageSizeName, type Sheet } from './impose';
 import { DEFAULT_STYLE, layoutSong, type Columns, type LaidPage, type SongStyle, type TextItem } from './layout';
 import { imageSize } from './images';
-import { layoutPage, parsePageTemplate, templateImages } from './pages';
+import { layoutPage, parsePage, pageImages } from './pages';
 
 export type ContentItem =
   | { song: string; columns?: Columns; scale?: number }
@@ -213,9 +213,9 @@ export async function buildSongbook(book: Songbook, fonts: FontRegistry, loader:
       }
     } else if ('page' in item) {
       try {
-        const t = parsePageTemplate(await loader.readText(item.page));
+        const t = parsePage(await loader.readText(item.page));
         const imageSizes: Record<string, { width: number; height: number }> = {};
-        for (const src of templateImages(t)) {
+        for (const src of pageImages(t)) {
           try {
             imageSizes[src] = imageSize(await loader.readBytes(src));
           } catch (e) {
@@ -275,7 +275,7 @@ export async function buildSongbook(book: Songbook, fonts: FontRegistry, loader:
     sizes = next;
     pass = paginate(sizes);
   }
-  // Booklets need a multiple of 4 pages: when the book ends with a template or
+  // Booklets need a multiple of 4 pages: when the book ends with a non-song page or
   // image page (a back cover), pad before it so that it stays at the back.
   const n = pass.out.length;
   const last = pass.out[n - 1];

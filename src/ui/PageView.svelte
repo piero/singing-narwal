@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Editor for page templates (.page.yaml): a list of elements with their
+  // Editor for pages (.page.yaml): a list of elements with their
   // settings, a YAML source view and a live preview.
   import { onDestroy } from 'svelte';
   import { debouncedSaver } from './saves';
@@ -10,12 +10,12 @@
   import {
     elementKind,
     layoutPage,
-    parsePageTemplate,
-    serializePageTemplate,
-    templateImages,
+    parsePage,
+    serializePage,
+    pageImages,
     type ElementKind,
     type PageElement,
-    type PageTemplate,
+    type PageDoc,
   } from '../core/pages';
   import { ImageUrls } from './assets.svelte';
   import { t, type Key } from './i18n.svelte';
@@ -24,7 +24,7 @@
 
   let { workspace, path, fonts, files }: { workspace: Workspace; path: string; fonts: FontRegistry; files: string[] } = $props();
 
-  let tpl = $state<PageTemplate | null>(null);
+  let tpl = $state<PageDoc | null>(null);
   let mode: 'elements' | 'source' = $state('elements');
   let page: PageSizeName = $state('A5');
   let previewTitle = $state('Canzoniere');
@@ -34,8 +34,8 @@
 
   $effect(() => {
     workspace.readText(path).then((text) => {
-      tpl = parsePageTemplate(text);
-      savedText = serializePageTemplate(tpl);
+      tpl = parsePage(text);
+      savedText = serializePage(tpl);
     });
   });
 
@@ -44,7 +44,7 @@
   onDestroy(saver.flush);
   $effect(() => {
     if (!tpl) return;
-    const text = serializePageTemplate(tpl);
+    const text = serializePage(tpl);
     if (text === savedText) return;
     const target = path;
     saver.schedule(async () => {
@@ -56,7 +56,7 @@
   // Image sizes, needed by the layout.
   $effect(() => {
     if (!tpl) return;
-    for (const src of templateImages(tpl)) {
+    for (const src of pageImages(tpl)) {
       if (sizes[src]) continue;
       workspace
         .readBytes(src)
@@ -67,7 +67,7 @@
 
   const laid = $derived.by(() => {
     if (!tpl) return null;
-    return layoutPage($state.snapshot(tpl) as PageTemplate, {
+    return layoutPage($state.snapshot(tpl) as PageDoc, {
       fonts,
       ...PAGE_SIZES[page],
       defaultMargin: DEFAULT_STYLE.margin.left,
@@ -110,15 +110,15 @@
 
   let source = $state('');
   function showSource() {
-    source = tpl ? serializePageTemplate(tpl) : '';
+    source = tpl ? serializePage(tpl) : '';
     mode = 'source';
   }
   function editSource(text: string) {
     source = text;
     try {
-      tpl = parsePageTemplate(text);
+      tpl = parsePage(text);
     } catch {
-      /* keep the last valid template while typing */
+      /* keep the last valid page while typing */
     }
   }
 </script>

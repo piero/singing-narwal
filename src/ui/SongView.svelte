@@ -164,7 +164,7 @@
       {#if mode === 'visual'}
         <VisualEditor {doc} onchange={change} {focusRequest} />
         <p class="help">
-          {t('song.help', { chordExample: '[Am]', soc: '{start_of_chorus}', eoc: '{end_of_chorus}', chorus: '{chorus}', colb: '{column_break}' })}
+          {t('song.help', { chordExample: '[Am]' })}
         </p>
       {:else}
         <textarea class="source" value={source} oninput={(e) => change(parseSong(e.currentTarget.value))} spellcheck="false"></textarea>

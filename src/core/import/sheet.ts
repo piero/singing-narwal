@@ -103,7 +103,7 @@ function chordsOf(line: SheetLine, from: number): { chord: string; x: number }[]
   return out;
 }
 
-/** Normalise the spelling of a chord, keeping its notation (e.g. "SIm" → "Si-"). */
+/** Normalise the spelling of a chord, keeping its notation and minor marker (e.g. "SIm" → "Sim", "LA-" → "La-"). */
 export function normalizeChord(c: string): string {
   const p = parseChord(c);
   return p ? formatChord(p, chordNotation(c)) : c;

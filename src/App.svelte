@@ -2,7 +2,7 @@
   import { getMeta, parseSong } from './core/chordpro';
   import { isFontFile, type FontRegistry } from './core/fonts';
   import { slugify } from './core/import';
-  import { serializePageTemplate, starterTemplate } from './core/pages';
+  import { serializePage, starterTemplate } from './core/pages';
   import { defaultSongbook, serializeSongbook } from './core/songbook';
   import { tick } from 'svelte';
   import { loadFonts } from './ui/assets.svelte';
@@ -17,7 +17,7 @@
     BrowserFolderWorkspace,
     DemoWorkspace,
     copyWorkspace,
-    isPageTemplate,
+    isPage,
     isSong,
     isSongbook,
     pickFolder,
@@ -138,7 +138,7 @@
     const title = prompt(t('prompt.pageName'), t('prompt.pageNameDefault'));
     if (!title) return;
     const name = uniqueName(`pages/${slugify(title)}`, '.page.yaml');
-    await workspace.writeText(name, serializePageTemplate(starterTemplate('cover', i18n.lang)));
+    await workspace.writeText(name, serializePage(starterTemplate('cover', i18n.lang)));
     await refresh();
     current = name;
   }
@@ -150,7 +150,7 @@
       .sort((a, b) => (titles[a] ?? a).localeCompare(titles[b] ?? b)),
   );
   const books = $derived(files.filter(isSongbook));
-  const pages = $derived(files.filter(isPageTemplate));
+  const pages = $derived(files.filter(isPage));
   const baseName = (f: string) => f.split('/').pop()!.replace(/\.(songbook|page)\.ya?ml$/i, '');
   const label = (f: string) => (isSong(f) ? (titles[f] ?? baseName(f)) : baseName(f));
 
@@ -279,7 +279,7 @@
       {#key current}
         <BookView {workspace} path={current} {fonts} {files} onopen={(p) => (current = p)} onfileschanged={refresh} />
       {/key}
-    {:else if current && isPageTemplate(current)}
+    {:else if current && isPage(current)}
       {#key current}
         <PageView {workspace} path={current} {fonts} {files} />
       {/key}

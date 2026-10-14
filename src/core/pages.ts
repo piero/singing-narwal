@@ -1,6 +1,6 @@
-// Page templates: editable extra pages for songbooks (cover, quote, notes...).
+// Pages: editable non-song pages for songbooks (cover, quote, notes...).
 //
-// A template is a YAML file (.page.yaml) with a list of elements stacked from
+// A page is a YAML file (.page.yaml) with a list of elements stacked from
 // top to bottom. Heights can be fixed (in points) or "fill", to share the space
 // left on the page:
 //
@@ -70,7 +70,7 @@ export interface RuleElement extends Common {
 
 export type PageElement = TextElement | ImageElement | BoxElement | LinesElement | SpaceElement | RuleElement;
 
-export interface PageTemplate {
+export interface PageDoc {
   /** Page margin in points (default: the song margins). */
   margin?: number;
   elements: PageElement[];
@@ -87,12 +87,12 @@ export function elementKind(e: PageElement): ElementKind {
   return 'space';
 }
 
-export function parsePageTemplate(src: string): PageTemplate {
-  const y = (YAML.parse(src) ?? {}) as Partial<PageTemplate>;
+export function parsePage(src: string): PageDoc {
+  const y = (YAML.parse(src) ?? {}) as Partial<PageDoc>;
   return { margin: y.margin, elements: Array.isArray(y.elements) ? y.elements : [] };
 }
 
-export function serializePageTemplate(t: PageTemplate): string {
+export function serializePage(t: PageDoc): string {
   const out: Record<string, unknown> = {};
   if (t.margin !== undefined) out.margin = t.margin;
   out.elements = t.elements;
@@ -119,7 +119,7 @@ export interface PageLayoutContext {
   defaultMargin: number;
   defaultFont: string;
   vars: PageVars;
-  /** Pixel size of each image referenced by the template (missing: skipped). */
+  /** Pixel size of each image referenced by the page (missing: skipped). */
   imageSizes: Record<string, { width: number; height: number }>;
 }
 
@@ -141,7 +141,7 @@ function wrap(fonts: FontRegistry, font: string, size: number, text: string, max
   return out;
 }
 
-export function layoutPage(t: PageTemplate, ctx: PageLayoutContext): LaidPage {
+export function layoutPage(t: PageDoc, ctx: PageLayoutContext): LaidPage {
   const { fonts, width, height } = ctx;
   const m = t.margin ?? ctx.defaultMargin;
   const innerW = width - 2 * m;
@@ -261,16 +261,16 @@ export function layoutPage(t: PageTemplate, ctx: PageLayoutContext): LaidPage {
   return { width, height, items };
 }
 
-/** Images referenced by a template, to load their sizes before layout. */
-export function templateImages(t: PageTemplate): string[] {
+/** Images referenced by a page, to load their sizes before layout. */
+export function pageImages(t: PageDoc): string[] {
   return t.elements.filter((e): e is ImageElement => 'image' in e && !!e.image).map((e) => e.image);
 }
 
-// --- Starter templates -----------------------------------------------------
+// --- Starter templates: initial content for new pages ---------------------
 
 export type TemplateName = 'cover' | 'quote' | 'notes' | 'lines' | 'empty';
 
-const STARTERS: Record<'en' | 'it', Record<TemplateName, PageTemplate>> = {
+const STARTERS: Record<'en' | 'it', Record<TemplateName, PageDoc>> = {
   it: {
     cover: {
       elements: [
@@ -327,6 +327,6 @@ const STARTERS: Record<'en' | 'it', Record<TemplateName, PageTemplate>> = {
   },
 };
 
-export function starterTemplate(name: TemplateName, lang: 'en' | 'it'): PageTemplate {
+export function starterTemplate(name: TemplateName, lang: 'en' | 'it'): PageDoc {
   return structuredClone(STARTERS[lang][name]);
 }

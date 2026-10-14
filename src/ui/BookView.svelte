@@ -6,11 +6,11 @@
   import { impose, PAGE_SIZES } from '../core/impose';
   import { renderPdf } from '../core/pdf';
   import { buildSongbook, parseSongbook, serializeSongbook, type BuiltBook, type ContentItem, type Songbook } from '../core/songbook';
-  import { serializePageTemplate, starterTemplate, type TemplateName } from '../core/pages';
+  import { serializePage, starterTemplate, type TemplateName } from '../core/pages';
   import { ImageUrls } from './assets.svelte';
   import { i18n, t, type Key } from './i18n.svelte';
   import Preview from './Preview.svelte';
-  import { isImage, isPageTemplate, isSong, saveFile, type Workspace } from './workspace';
+  import { isImage, isPage, isSong, saveFile, type Workspace } from './workspace';
 
   let {
     workspace,
@@ -113,7 +113,7 @@
     { name: 'empty', label: 'tpl.empty' },
   ];
 
-  /** Add an existing template, or create one from a starter ("new:cover"). */
+  /** Add an existing page, or create a new one from a starter template ("new:cover"). */
   async function addPageItem(choice: string) {
     if (!choice) return;
     let file = choice;
@@ -122,7 +122,7 @@
       const base = `pages/${t(TEMPLATES.find((x) => x.name === name)!.label).toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
       file = `${base}.page.yaml`;
       for (let n = 2; files.includes(file); n++) file = `${base}-${n}.page.yaml`;
-      await workspace.writeText(file, serializePageTemplate(starterTemplate(name, i18n.lang)));
+      await workspace.writeText(file, serializePage(starterTemplate(name, i18n.lang)));
       onfileschanged();
     }
     add({ page: rel(file) });
@@ -221,7 +221,7 @@
         <button onclick={() => add('blank')}>{t('book.addBlank')}</button>
         <select bind:value={addPage} onchange={() => { addPageItem(addPage); addPage = ''; }}>
           <option value="">{t('book.addPage')}</option>
-          {#each files.filter(isPageTemplate) as f (f)}<option value={f}>📄 {f.split('/').pop()!.replace(/\.page\.ya?ml$/i, '')}</option>{/each}
+          {#each files.filter(isPage) as f (f)}<option value={f}>📄 {f.split('/').pop()!.replace(/\.page\.ya?ml$/i, '')}</option>{/each}
           {#each TEMPLATES as tp (tp.name)}<option value={'new:' + tp.name}>{t('book.newFromTemplate', { name: t(tp.label) })}</option>{/each}
         </select>
         <select bind:value={addImage}>

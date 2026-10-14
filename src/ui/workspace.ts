@@ -25,7 +25,7 @@ export interface Workspace extends FileLoader {
 
 export const isSong = (p: string) => /\.(cho|chordpro|chopro|crd|pro)$/i.test(p);
 export const isSongbook = (p: string) => /\.songbook\.ya?ml$/i.test(p);
-export const isPageTemplate = (p: string) => /\.page\.ya?ml$/i.test(p);
+export const isPage = (p: string) => /\.page\.ya?ml$/i.test(p);
 export const isImage = (p: string) => /\.(png|jpe?g)$/i.test(p);
 
 function toBase64(b: Uint8Array): string {
