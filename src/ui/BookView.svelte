@@ -164,7 +164,7 @@
               <option value="copies">{t('opt.copies')}</option>
             </select>
           </label>
-          <label>{t('opt.chords')} <select bind:value={book.notation}><option value="italian">Do Re Mi</option><option value="english">C D E</option></select></label>
+          <label title={t('book.notationHelp')}>{t('opt.chords')} <select bind:value={book.notation}><option value="original">{t('book.asWritten')}</option><option value="italian">{t('book.allItalian')}</option><option value="english">{t('book.allEnglish')}</option></select></label>
           <label>{t('song.columns')} <select bind:value={book.columns}><option value="auto">{t('opt.auto')}</option><option value={1}>1</option><option value={2}>2</option></select></label>
           <label><input type="checkbox" bind:checked={book.showChords} /> {t('book.showChords')}</label>
           <label><input type="checkbox" bind:checked={book.pageNumbers} /> {t('book.pageNumbers')}</label>
@@ -193,9 +193,6 @@
             </span>
             {#if typeof c === 'object' && 'song' in c}
               <span class="opts">
-                <button title={t('book.transposeDown')} onclick={() => (c.transpose = (c.transpose ?? 0) - 1 || undefined)}>♭</button>
-                <span class="tr">{c.transpose ? (c.transpose > 0 ? '+' : '') + c.transpose : '0'}</span>
-                <button title={t('book.transposeUp')} onclick={() => (c.transpose = (c.transpose ?? 0) + 1 || undefined)}>♯</button>
                 <select title="Columns" value={c.columns ?? ''} onchange={(e) => (c.columns = e.currentTarget.value === '' ? undefined : e.currentTarget.value === 'auto' ? 'auto' : (Number(e.currentTarget.value) as 1 | 2))}>
                   <option value="">{t('book.colsBook')}</option>
                   <option value="auto">{t('opt.auto')}</option>
@@ -327,7 +324,6 @@
     gap: 2px;
     align-items: center;
   }
-  .opts button,
   .actions button {
     border: none;
     background: none;
@@ -336,15 +332,9 @@
     padding: 2px 5px;
     border-radius: 3px;
   }
-  .opts button:hover,
   .actions button:hover {
     background: var(--chip-hover);
     color: var(--fg);
-  }
-  .tr {
-    min-width: 1.6em;
-    text-align: center;
-    font-size: 12px;
   }
   .opts select {
     font-size: 12px;

@@ -64,7 +64,8 @@ export interface LayoutOptions {
   width: number;
   height: number;
   columns: Columns;
-  notation: Notation;
+  /** 'original' prints chords as written in the song. */
+  notation: Notation | 'original';
   transpose: number;
   showChords: boolean;
   /** Fixed font scale; when omitted the engine picks the largest that minimises pages. */

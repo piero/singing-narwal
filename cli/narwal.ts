@@ -6,8 +6,7 @@
 //   -o, --output <file.pdf>     output file (default: input name + .pdf)
 //   --page A4|A5|A6|Letter      logical page size (default A5 for books, A4 for songs)
 //   --imposition single|copies|2up|booklet
-//   --notation italian|english
-//   --transpose <semitones>     (single songs only)
+//   --notation original|italian|english   print chords as written, or all in one notation
 //   --columns 1|2|auto          (single songs only)
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -29,7 +28,6 @@ const { values, positionals } = parseArgs({
     page: { type: 'string' },
     imposition: { type: 'string' },
     notation: { type: 'string' },
-    transpose: { type: 'string' },
     columns: { type: 'string' },
   },
 });
@@ -72,14 +70,13 @@ if (!isBook) {
   book.contents = [
     {
       song: basename(input),
-      transpose: values.transpose ? Number(values.transpose) : undefined,
       columns: values.columns ? (values.columns === 'auto' ? 'auto' : (Number(values.columns) as 1 | 2)) : undefined,
     },
   ];
 }
 if (values.page) book.page = values.page as PageSizeName;
 if (values.imposition) book.imposition = values.imposition as ImpositionKind;
-if (values.notation) book.notation = values.notation as Notation;
+if (values.notation) book.notation = values.notation as Notation | 'original';
 if (values.columns && isBook) book.columns = values.columns as Columns;
 
 const built = await buildSongbook(book, fonts, loader);

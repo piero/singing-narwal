@@ -1,8 +1,9 @@
 // Chord model: parsing (English and Italian names), transposition and rendering.
 //
-// A chord is stored as written in the source file. When it can be parsed, it is
-// rendered in the songbook's notation (and transposed); otherwise it is printed
-// verbatim (e.g. "N.C.", "|", "(2x)").
+// A chord is stored as written in the source file. Converting notation and
+// transposing are edits of the song (see transform.ts); a songbook may also ask to
+// print all chords in one notation. Chords that cannot be parsed (e.g. "N.C.",
+// "|", "(2x)") are always kept verbatim.
 
 export type Notation = 'english' | 'italian';
 
@@ -118,17 +119,25 @@ export function formatChord(c: Chord, notation: Notation): string {
   return noteName(c.root, notation) + minor + c.suffix + bass;
 }
 
+/** Notation a chord is written in ("La-" → italian, "Am" → english). */
+export function chordNotation(text: string): Notation {
+  return /^\s*(do|re|mi|fa|sol|la|si)/i.test(text) ? 'italian' : 'english';
+}
+
 export interface ChordRenderOptions {
-  notation: Notation;
+  /** Target notation; 'original' keeps each chord's own notation. */
+  notation: Notation | 'original';
   transpose: number;
   spelling?: Spelling;
 }
 
-/** Render a chord as written in the source, in the requested notation and key. */
+/** A chord in the requested notation and key. With no change requested, the text is kept as is. */
 export function renderChord(text: string, opts: ChordRenderOptions): string {
+  if (opts.notation === 'original' && opts.transpose % 12 === 0) return text;
   const c = parseChord(text);
   if (!c) return text;
-  return formatChord(transposeChord(c, opts.transpose, opts.spelling ?? 'auto'), opts.notation);
+  const notation = opts.notation === 'original' ? chordNotation(text) : opts.notation;
+  return formatChord(transposeChord(c, opts.transpose, opts.spelling ?? 'auto'), notation);
 }
 
 const FLAT_KEYS_MAJOR = new Set([5, 10, 3, 8, 1, 6]); // F Bb Eb Ab Db Gb

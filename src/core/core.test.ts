@@ -5,6 +5,7 @@ import { parseChord, renderChord, spellingForKey } from './chords';
 import { parseSong, serializeSong } from './chordpro';
 import { FontRegistry, BUNDLED_FONTS } from './fonts';
 import { bookletOrder } from './impose';
+import { convertNotation, songNotation, transposeSong } from './transform';
 import { DEFAULT_STYLE, layoutSong, structure } from './layout';
 
 const it_ = (notation: 'italian' | 'english', transpose = 0) => ({ notation, transpose });
@@ -108,5 +109,27 @@ describe('layout', () => {
       const doc = parseSong(readFileSync(join(__dirname, '../../examples/songs', f), 'utf8'));
       expect(layoutSong(doc, fonts, DEFAULT_STYLE, opts).pages.length).toBe(1);
     }
+  });
+});
+
+describe('song transforms', () => {
+  const src = '{title: T}\n{key: D}\n[D]Siamo [Bm]aquile [N.C.]ran[F#7]dagie\n';
+
+  it('transposes chords and key in the song itself', () => {
+    const out = serializeSong(transposeSong(parseSong(src), 1));
+    expect(out).toContain('{key: Eb}');
+    expect(out).toContain('[Eb]Siamo [Cm]aquile [N.C.]ran[G7]dagie');
+  });
+
+  it('converts notation, keeping unparsed chords', () => {
+    const out = serializeSong(convertNotation(parseSong(src), 'italian'));
+    expect(out).toContain('{key: Re}');
+    expect(out).toContain('[Re]Siamo [Si-]aquile [N.C.]ran[Fa#7]dagie');
+    expect(songNotation(parseSong(out))).toBe('italian');
+  });
+
+  it('prints chords as written by default', () => {
+    expect(renderChord('LA-', { notation: 'original', transpose: 0 })).toBe('LA-');
+    expect(renderChord('La-', { notation: 'original', transpose: 2 })).toBe('Si-');
   });
 });

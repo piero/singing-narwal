@@ -11,7 +11,7 @@
 // chord to the lyric character found underneath it. With proportional fonts the
 // positions come from the real font metrics, not from counting spaces.
 
-import { formatChord, parseChord, type Notation } from '../chords';
+import { chordNotation, formatChord, parseChord } from '../chords';
 
 export interface SheetChar {
   ch: string;
@@ -106,9 +106,7 @@ function chordsOf(line: SheetLine, from: number): { chord: string; x: number }[]
 /** Normalise the spelling of a chord, keeping its notation (e.g. "SIm" → "Si-"). */
 export function normalizeChord(c: string): string {
   const p = parseChord(c);
-  if (!p) return c;
-  const italian = /^(do|re|mi|fa|sol|la|si)/i.test(c);
-  return formatChord(p, (italian ? 'italian' : 'english') as Notation);
+  return p ? formatChord(p, chordNotation(c)) : c;
 }
 
 /** Index of the lyric character under position x (may be past the end). */

@@ -6,6 +6,7 @@
   import { impose, PAGE_SIZES, type PageSizeName } from '../core/impose';
   import { DEFAULT_STYLE, layoutSong, type Columns } from '../core/layout';
   import { renderPdf } from '../core/pdf';
+  import { convertNotation, songNotation, transposeSong } from '../core/transform';
   import Preview from './Preview.svelte';
   import VisualEditor from './VisualEditor.svelte';
   import { saveFile, type Workspace } from './workspace';
@@ -24,7 +25,6 @@
   let loadedPath = '';
   let savedText = '';
   let mode: 'visual' | 'source' = $state('visual');
-  let transpose = $state(0);
   let status = $state('');
   let focusRequest: { line: number; n: number } | undefined = $state();
 
@@ -43,7 +43,6 @@
       savedText = serializeSong(doc);
       history = [savedText];
       future = [];
-      transpose = 0;
     });
   });
 
@@ -66,12 +65,13 @@
     });
   });
 
-  function change(d: SongDoc) {
+  /** Apply an edit. Typing within a short time is grouped into one undo step; `step` forces a new one. */
+  function change(d: SongDoc, step = false) {
     const now = Date.now();
     const text = serializeSong(d);
-    if (now - lastPush > 800 || !history.length) history.push(text);
+    if (step || now - lastPush > 800 || !history.length) history.push(text);
     else history[history.length - 1] = text;
-    lastPush = now;
+    lastPush = step ? 0 : now; // the next edit after a step starts a new one
     future = [];
     doc = d;
     status = '';
@@ -102,6 +102,7 @@
   const meta = (name: string) => getMeta(doc, name) ?? '';
   const setM = (name: string, value: string) => change(setMeta(doc, name, value));
 
+  const notation = $derived(songNotation(doc));
   const columns = $derived((meta('columns') === '1' ? 1 : meta('columns') === '2' ? 2 : 'auto') as Columns);
   const laid = $derived.by(() => {
     if (!doc.lines.length) return null;
@@ -109,8 +110,8 @@
     return layoutSong(doc, fonts, DEFAULT_STYLE, {
       ...size,
       columns,
-      notation: songSettings.notation,
-      transpose,
+      notation: 'original',
+      transpose: 0,
       showChords: true,
     });
   });
@@ -140,6 +141,18 @@
             <option value="2">2</option>
           </select>
         </label>
+      </div>
+      <div class="row chord-tools">
+        <span class="seg" role="group" aria-label={t('opt.chords')}>
+          {t('opt.chords')}
+          <button class:active={notation === 'italian'} disabled={!notation} title={t('song.toItalian')} onclick={() => change(convertNotation(doc, 'italian'), true)}>Do Re Mi</button>
+          <button class:active={notation === 'english'} disabled={!notation} title={t('song.toEnglish')} onclick={() => change(convertNotation(doc, 'english'), true)}>C D E</button>
+        </span>
+        <span class="seg" role="group" aria-label={t('opt.transpose')}>
+          {t('opt.transpose')}
+          <button disabled={!notation} title={t('song.transposeDown')} onclick={() => change(transposeSong(doc, -1), true)}>−½</button>
+          <button disabled={!notation} title={t('song.transposeUp')} onclick={() => change(transposeSong(doc, 1), true)}>+½</button>
+        </span>
       </div>
       <div class="row tabs">
         <button class:active={mode === 'visual'} onclick={() => (mode = 'visual')}>{t('song.editor')}</button>
@@ -174,19 +187,6 @@
           <option value="copies">{t('opt.copies')}</option>
           <option value="2up">{t('opt.2up')}</option>
         </select>
-      </label>
-      <label>
-        {t('opt.chords')}
-        <select bind:value={songSettings.notation} onchange={saveSettings}>
-          <option value="italian">Do Re Mi</option>
-          <option value="english">C D E</option>
-        </select>
-      </label>
-      <label class="transpose">
-        {t('opt.transpose')}
-        <button onclick={() => transpose--}>−</button>
-        <span>{transpose > 0 ? '+' : ''}{transpose}</span>
-        <button onclick={() => transpose++}>+</button>
       </label>
       <button class="primary" onclick={exportPdf} disabled={!laid}>{t('opt.exportPdf')}</button>
     </div>
@@ -310,9 +310,34 @@
     color: var(--muted);
     padding: 4px 16px;
   }
-  .transpose span {
-    display: inline-block;
-    min-width: 2em;
-    text-align: center;
+  .chord-tools {
+    gap: 16px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .seg {
+    display: inline-flex;
+    align-items: center;
+    gap: 0;
+  }
+  .seg button {
+    margin-left: -1px;
+    border: 1px solid var(--line);
+    background: var(--bg);
+    color: var(--fg);
+    padding: 2px 9px;
+    cursor: pointer;
+  }
+  .seg button:first-of-type {
+    margin-left: 6px;
+    border-radius: 5px 0 0 5px;
+  }
+  .seg button:last-of-type {
+    border-radius: 0 5px 5px 0;
+  }
+  .seg button.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--on-accent);
   }
 </style>

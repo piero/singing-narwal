@@ -4,13 +4,12 @@
 //   title: Canzoniere Campo 2026
 //   page: A5
 //   imposition: booklet      # single | copies | 2up | booklet
-//   notation: italian        # italian | english
+//   notation: original       # original (as written) | italian | english
 //   contents:
 //     - image: images/cover.png
 //     - toc: Indice
 //     - song: songs/al-fuoco-di-bivacco.cho
 //     - song: songs/insieme.cho
-//       transpose: -2
 //       columns: 2
 
 import YAML from 'yaml';
@@ -23,7 +22,7 @@ import { imageSize } from './images';
 import { layoutPage, parsePageTemplate, templateImages } from './pages';
 
 export type ContentItem =
-  | { song: string; transpose?: number; columns?: Columns; scale?: number }
+  | { song: string; columns?: Columns; scale?: number }
   | { image: string; caption?: string }
   | { page: string; page_number?: boolean }
   | { toc: string }
@@ -33,7 +32,8 @@ export interface Songbook {
   title: string;
   page: PageSizeName;
   imposition: ImpositionKind;
-  notation: Notation;
+  /** Print every chord in one notation, or 'original' to keep them as written. */
+  notation: Notation | 'original';
   columns: Columns;
   showChords: boolean;
   pageNumbers: boolean;
@@ -61,7 +61,7 @@ export function defaultSongbook(): Songbook {
     title: '',
     page: 'A5',
     imposition: 'booklet',
-    notation: 'italian',
+    notation: 'original',
     columns: 'auto',
     showChords: true,
     pageNumbers: true,
@@ -79,7 +79,7 @@ export function parseSongbook(src: string): Songbook {
     title: String(y.title ?? d.title),
     page: (y.page as PageSizeName) in PAGE_SIZES ? (y.page as PageSizeName) : d.page,
     imposition: (y.imposition as ImpositionKind) ?? d.imposition,
-    notation: (y.notation as Notation) ?? d.notation,
+    notation: (['italian', 'english', 'original'].includes(y.notation as string) ? y.notation : d.notation) as Songbook['notation'],
     columns: (y.columns as Columns) ?? d.columns,
     showChords: (y.show_chords as boolean) ?? d.showChords,
     pageNumbers: (y.page_numbers as boolean) ?? d.pageNumbers,
@@ -92,7 +92,8 @@ export function parseSongbook(src: string): Songbook {
 
 export function serializeSongbook(b: Songbook): string {
   const d = defaultSongbook();
-  const y: Record<string, unknown> = { title: b.title, page: b.page, imposition: b.imposition, notation: b.notation };
+  const y: Record<string, unknown> = { title: b.title, page: b.page, imposition: b.imposition };
+  if (b.notation !== d.notation) y.notation = b.notation;
   if (b.columns !== d.columns) y.columns = b.columns;
   if (b.showChords !== d.showChords) y.show_chords = b.showChords;
   if (b.pageNumbers !== d.pageNumbers) y.page_numbers = b.pageNumbers;
@@ -202,7 +203,7 @@ export async function buildSongbook(book: Songbook, fonts: FontRegistry, loader:
           height,
           columns: item.columns ?? book.columns,
           notation: book.notation,
-          transpose: item.transpose ?? 0,
+          transpose: 0,
           showChords: book.showChords,
           scale: item.scale,
         });
