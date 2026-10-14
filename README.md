@@ -10,7 +10,8 @@ Songs with chords, laid out for printing, assembled into songbooks.
   optionally two copies per sheet, ready to cut.
 - **Assemble a songbook** from songs, an index, a cover and other pages, and print it as
   a fold-and-staple booklet.
-- **Import** the songs you already have in `.odt` (LibreOffice/Word) or `.txt` files.
+- **Import** the songs you already have in `.odt` (LibreOffice/Word) or `.txt` files, or a
+  whole songbook laid out in LibreOffice Draw (`.odg`).
 - Chords in **Italian (Do Re Mi) or English (C D E)** names; convert or **transpose** a
   song in one click.
 - Interface in **English and Italian**.
@@ -56,6 +57,7 @@ The sidebar always shows where the open workspace is.
 | You have | Formats | What happens |
 |---|---|---|
 | Songs with chords on the line above the lyrics | `.odt`, `.txt`, pasted text | converted to ChordPro songs in `songs/` |
+| A songbook laid out in LibreOffice Draw, two A5 pages per landscape sheet | `.odg` | a songbook, with each song in `songs/`, the other pages (cover, notes…) in `pages/` and their pictures in `images/`; pictures next to songs are left out |
 | ChordPro songs (from other apps) | `.cho`, `.chordpro`, `.chopro`, `.crd`, `.pro` | copied into `songs/` as they are |
 | Pictures for covers or full pages | `.png`, `.jpg` | copied into `images/` |
 | Extra fonts | `.ttf`, `.otf` | copied into `fonts/`, usable in pages |

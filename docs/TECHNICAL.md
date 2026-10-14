@@ -24,7 +24,7 @@ flowchart TB
     Parse["chordpro.ts · chords.ts · transform.ts<br/>parse, transpose, convert"]
     Layout["layout.ts · pages.ts · songbook.ts<br/>display list of pages"]
     Out["impose.ts · pdf.ts<br/>sheets, PDF (pdf-lib)"]
-    Import["import/<br/>.odt and .txt converter"]
+    Import["import/<br/>.odt, .odg and .txt converter"]
   end
 
   CLI["cli/narwal.ts<br/>(Node, tsx)"]
@@ -89,6 +89,15 @@ flowchart TB
 2. **Convert** (`sheet.ts`): classify chord lines and lyric lines, attach each chord to
    the letter under it (moving it to the next word if it sits on a space), and recognise
    titles, artists, instrumental lines, indented choruses, `Rit.` labels and chorus repeats.
+
+**Songbooks from LibreOffice Draw** (`odg.ts`). Each landscape sheet is split into its two
+halves, numbered as a booklet (n|1, 2|n−1, …) or in reading order, as the user chooses.
+A half holding an embedded text document becomes a song, read by the `.odt` reader; a half
+with text boxes, rounded rectangles and pictures becomes a page (`.page.yaml`), stacked
+from top to bottom with the original gaps, a text box inside a rectangle becoming the box's
+label; an empty half becomes a blank page. The import dialog assembles them into a
+`.songbook.yaml` and converts GIF pictures to PNG (in the browser), since the PDF writer
+embeds only PNG and JPEG.
 
 ## Technologies
 

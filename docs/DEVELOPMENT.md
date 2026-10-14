@@ -74,10 +74,11 @@ src/
     import/
       index.ts             entry points: importFile, importText; plain-text reader
       odt.ts               .odt reader: styles, spacing, character positions
+      odg.ts               .odg songbooks: sheets split into pages, songs and other pages
       xml.ts               minimal XML parser for .odt content
       sheet.ts             chords-over-lyrics → ChordPro converter
     core.test.ts           tests: chords, ChordPro, layout, imposition, transforms, pages
-    import.test.ts         tests: text and .odt import
+    import.test.ts         tests: text, .odt and .odg import
   ui/                      Svelte UI and browser-side services
     SongView.svelte        song editor screen: metadata, chord tools, preview, export
     VisualEditor.svelte    chords-over-lyrics editor and section toolbar
@@ -202,6 +203,8 @@ like the rest of the project.
 - [x] `.odt`, `.txt` and pasted text with chords above the lyrics, measured with the
       document's fonts; titles, artists, choruses, labels, repeats and instrumental lines
       detected.
+- [x] Songbooks laid out in LibreOffice Draw (`.odg`): sheets split into pages (booklet or
+      reading order), embedded songs converted, covers and other pages rebuilt as pages.
 - [x] Command-line import and PDF rendering.
 
 **App**
@@ -223,5 +226,5 @@ like the rest of the project.
 - [ ] Images inside songs (`{image: …}`), placed in free space at the end of a column.
 - [ ] Style editor for songs (fonts and sizes of lyrics, chords, titles).
 - [ ] Booklet options: cover from a PDF, sections with their own index.
-- [ ] Import: split documents containing several songs; `.docx` directly.
+- [ ] Import: split documents containing several songs; `.docx` directly; `.odg` songbooks from the command line.
 - [ ] Transpose `add` notes inside suffixes (e.g. `F#(addB)`).

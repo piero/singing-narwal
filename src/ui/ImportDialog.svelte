@@ -1,20 +1,29 @@
 <script lang="ts">
-  // Import songs (.odt, .txt, .cho), images and fonts into the workspace.
-  // Songs written with chords above the lyrics are converted to ChordPro.
+  // Import songs (.odt, .txt, .cho), songbooks laid out in LibreOffice Draw (.odg),
+  // images and fonts into the workspace. Songs written with chords above the lyrics are
+  // converted to ChordPro; an .odg becomes a songbook with its own pages and songs.
   // Nothing is written until Done: until then the converted songs can be reviewed
   // and edited, and Cancel discards them.
   import type { FontRegistry } from '../core/fonts';
   import { isFontFile } from '../core/fonts';
   import { IMPORTABLE, importFile, importText, slugify } from '../core/import';
+  import { importOdg } from '../core/import/odg';
+  import { serializePage } from '../core/pages';
+  import { defaultSongbook, parseSongbook, serializeSongbook, type ContentItem } from '../core/songbook';
   import { t } from './i18n.svelte';
   import { isImage, readExternalFiles, tiny, type Workspace } from './workspace';
 
   let { workspace, fonts, files, onclose }: { workspace: Workspace; fonts: FontRegistry; files: string[]; onclose: (opened?: string) => void } = $props();
 
-  /** A file waiting to be written: a song (ChordPro text, editable) or an image/font. */
-  type Item = { source: string; path: string; text?: string; bytes?: Uint8Array };
+  /** A file waiting to be written: text (song, page, songbook; editable) or an image/font. */
+  type Item = { source: string; path: string; text?: string; bytes?: Uint8Array; book?: number };
+  /** An imported .odg, kept to convert it again if its page order is changed. */
+  type BookSource = { id: number; name: string; bytes: Uint8Array; booklet: boolean };
 
   let items: Item[] = $state([]);
+  let books: BookSource[] = $state([]);
+  /** Paths left out of the import, removed from the songbooks that list them. */
+  const dropped = new Set<string>();
   let errors: string[] = $state([]);
   /** The song shown in the text box, or -1 when the box is for pasting a new song. */
   let selected = $state(-1);
@@ -45,9 +54,80 @@
     return { source: base, path: unique(`songs/${slugify(song.title)}`, '.cho'), text: song.chordpro };
   }
 
-  function add(list: { name: string; bytes: Uint8Array }[]) {
+  /** A GIF (or other picture the PDF cannot embed) converted to PNG by the browser. */
+  async function toPng(bytes: Uint8Array, type: string): Promise<Uint8Array> {
+    const bmp = await createImageBitmap(new Blob([bytes as unknown as ArrayBuffer], { type }));
+    const canvas = document.createElement('canvas');
+    canvas.width = bmp.width;
+    canvas.height = bmp.height;
+    canvas.getContext('2d')!.drawImage(bmp, 0, 0);
+    const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/png'));
+    if (!blob) throw new Error('cannot convert the picture');
+    return new Uint8Array(await blob.arrayBuffer());
+  }
+
+  /** Add an .odg songbook: a songbook file, its pages and songs, and the pictures of its pages. */
+  async function addBook(src: BookSource) {
+    const book = importOdg(src.name, src.bytes, fonts, { booklet: src.booklet });
+    const stem = slugify(book.title);
+    const pictures: Item[] = [];
+    const picturePath: Record<string, string> = {};
+    let n = 1;
+    for (const [href, bytes] of Object.entries(book.images)) {
+      const ext = href.slice(href.lastIndexOf('.')).toLowerCase();
+      try {
+        const png = !/^\.(png|jpe?g)$/.test(ext);
+        const data = png ? await toPng(bytes, `image/${ext.slice(1)}`) : bytes;
+        const path = unique(`images/${stem}-${n++}`, png ? '.png' : ext);
+        picturePath[href] = path;
+        pictures.push({ source: src.name, path, bytes: data, book: src.id });
+      } catch (e) {
+        errors.push(t('import.error', { file: `${src.name}: ${href}`, msg: (e as Error).message }));
+      }
+    }
+    const parts: Item[] = [];
+    const contents: ContentItem[] = [];
+    for (const part of book.parts) {
+      const source = t('import.bookPage', { name: src.name, page: part.page });
+      if (part.kind === 'blank') contents.push('blank');
+      else if (part.kind === 'song') {
+        const path = unique(`songs/${slugify(part.title)}`, '.cho');
+        parts.push({ source, path, text: part.chordpro, book: src.id });
+        contents.push({ song: path });
+      } else {
+        for (const el of part.doc.elements) if ('image' in el) el.image = picturePath[el.image] ?? el.image;
+        const path = unique(`pages/${part.name}`, '.page.yaml');
+        parts.push({ source, path, text: serializePage(part.doc), book: src.id });
+        contents.push({ page: path });
+      }
+    }
+    const songbook = { ...defaultSongbook(), title: book.title, page: book.pageSize, imposition: 'booklet' as const, contents };
+    const path = unique(book.title.replace(/[/\\:]/g, '-'), '.songbook.yaml');
+    items.push({ source: src.name, path, text: serializeSongbook(songbook), book: src.id }, ...parts, ...pictures);
+    selected = items.length - parts.length - pictures.length - 1;
+  }
+
+  /** Convert an .odg again with the other page order, replacing what it added. */
+  async function toggleBooklet(src: BookSource) {
+    for (let i = items.length - 1; i >= 0; i--) {
+      if (items[i].book !== src.id) continue;
+      taken.delete(items[i].path);
+      items.splice(i, 1);
+    }
+    selected = -1;
+    src.booklet = !src.booklet;
+    await addBook(src);
+  }
+
+  async function add(list: { name: string; bytes: Uint8Array }[]) {
     for (const it of list) {
       try {
+        if (/\.odg$/i.test(it.name)) {
+          const src = { id: books.length, name: it.name.split('/').pop()!, bytes: it.bytes, booklet: true };
+          books.push(src);
+          await addBook(books[books.length - 1]);
+          continue;
+        }
         items.push(convert(it.name, it.bytes));
         // Show the last song added.
         if (items[items.length - 1].text !== undefined) selected = items.length - 1;
@@ -61,13 +141,13 @@
 
   async function pick() {
     if (tiny()) {
-      add(await readExternalFiles());
+      await add(await readExternalFiles());
       return;
     }
     const input = document.createElement('input');
     input.type = 'file';
     input.multiple = true;
-    input.accept = '.odt,.txt,.cho,.chordpro,.chopro,.crd,.png,.jpg,.jpeg,.ttf,.otf';
+    input.accept = '.odt,.odg,.txt,.cho,.chordpro,.chopro,.crd,.png,.jpg,.jpeg,.ttf,.otf';
     input.onchange = async () => add(await readAll([...(input.files ?? [])]));
     input.click();
   }
@@ -75,7 +155,7 @@
   async function drop(e: DragEvent) {
     e.preventDefault();
     dragging = false;
-    add(await readAll([...(e.dataTransfer?.files ?? [])]));
+    await add(await readAll([...(e.dataTransfer?.files ?? [])]));
   }
 
   function addPasted() {
@@ -89,6 +169,7 @@
 
   function removeItem(i: number) {
     taken.delete(items[i].path);
+    dropped.add(items[i].path);
     items.splice(i, 1);
     if (selected === i) selected = -1;
     else if (selected > i) selected--;
@@ -102,9 +183,12 @@
     while (items.length) {
       const it = items[0];
       try {
-        if (it.text !== undefined) {
-          await workspace.writeText(it.path, it.text);
+        if (it.text !== undefined && it.path.endsWith('.songbook.yaml')) {
+          await workspace.writeText(it.path, withoutDropped(it.text));
           opened = it.path;
+        } else if (it.text !== undefined) {
+          await workspace.writeText(it.path, it.text);
+          if (!opened?.endsWith('.songbook.yaml')) opened = it.path;
         } else await workspace.writeBytes(it.path, it.bytes!);
       } catch (e) {
         // Keep the dialog open with the files not written yet.
@@ -116,6 +200,18 @@
       items.shift();
     }
     onclose(opened);
+  }
+
+  /** A songbook without the files left out of the import. */
+  function withoutDropped(text: string): string {
+    if (!dropped.size) return text;
+    try {
+      const book = parseSongbook(text);
+      book.contents = book.contents.filter((c) => typeof c !== 'object' || !dropped.has(('song' in c && c.song) || ('page' in c && c.page) || ('image' in c && c.image) || ''));
+      return serializeSongbook(book);
+    } catch {
+      return text;
+    }
   }
 
   const cancel = () => onclose();
@@ -169,6 +265,11 @@
           </li>
         {/each}
       </ul>
+      {#each books as b (b.id)}
+        {#if items.some((it) => it.book === b.id)}
+          <label class="help"><input type="checkbox" checked={b.booklet} disabled={busy} onchange={() => toggleBooklet(b)} /> {t('import.booklet', { name: b.name })}</label>
+        {/if}
+      {/each}
       <p class="help">{t('import.pendingHelp')}</p>
     {/if}
     {#if errors.length}

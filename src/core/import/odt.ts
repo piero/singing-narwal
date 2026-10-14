@@ -6,14 +6,14 @@ import { fontVariant, type FontRegistry } from '../fonts';
 import type { SheetChar, SheetLine } from './sheet';
 import { child, elements, parseXml, type XmlElement } from './xml';
 
-interface TextProps {
+export interface TextProps {
   font?: string;
   size?: number;
   sizePct?: number;
   bold?: boolean;
   italic?: boolean;
 }
-interface ParaProps {
+export interface ParaProps {
   marginLeft?: number;
   textIndent?: number;
   align?: SheetLine['align'];
@@ -78,9 +78,11 @@ function mergeText(base: TextProps, over: TextProps): TextProps {
   return r;
 }
 
-class Styles {
+export class Styles {
   map = new Map<string, Style>();
   defaultText: TextProps = { font: 'Liberation Serif', size: 12 };
+  /** Default text of drawing shapes (text boxes in .odg files). */
+  graphicText: TextProps = { font: 'Liberation Serif', size: 18 };
   tabDistance = toPt('1.25cm')!;
   fontFaces = new Map<string, string>();
 
@@ -89,6 +91,7 @@ class Styles {
       this.fontFaces.set(ff.attrs['style:name'], (ff.attrs['svg:font-family'] ?? ff.attrs['style:name']).replace(/['"]/g, ''));
     }
     for (const d of elements(root, 'style:default-style')) {
+      if (d.attrs['style:family'] === 'graphic') this.graphicText = mergeText(this.graphicText, readTextProps(child(d, 'style:text-properties')));
       if (d.attrs['style:family'] !== 'paragraph') continue;
       this.defaultText = mergeText(this.defaultText, readTextProps(child(d, 'style:text-properties')));
       const tab = toPt(child(d, 'style:paragraph-properties')?.attrs['style:tab-stop-distance']);
@@ -130,7 +133,7 @@ class Styles {
 }
 
 /** Map a document font name to a registry family. */
-function registryFamily(reg: FontRegistry, name: string): string {
+export function registryFamily(reg: FontRegistry, name: string): string {
   const compact = name.replace(/\s+/g, '');
   if (reg.ids().some((id) => id.startsWith(compact + '-') || id === compact)) return compact;
   if (/mono|courier|consol|cousine/i.test(name)) return 'LiberationMono';
@@ -146,9 +149,14 @@ interface Run {
 export function readOdt(bytes: Uint8Array, fonts: FontRegistry): SheetLine[] {
   const files = unzipSync(bytes, { filter: (f) => f.name === 'content.xml' || f.name === 'styles.xml' });
   if (!files['content.xml']) throw new Error('Not an OpenDocument file (content.xml missing)');
+  return readOdtXml(strFromU8(files['content.xml']), files['styles.xml'] && strFromU8(files['styles.xml']), fonts);
+}
+
+/** A text document given as its content.xml and styles.xml (e.g. one embedded in a drawing). */
+export function readOdtXml(contentXml: string, stylesXml: string | undefined, fonts: FontRegistry): SheetLine[] {
   const styles = new Styles();
-  if (files['styles.xml']) styles.addDoc(parseXml(strFromU8(files['styles.xml'])));
-  const content = parseXml(strFromU8(files['content.xml']));
+  if (stylesXml) styles.addDoc(parseXml(stylesXml));
+  const content = parseXml(contentXml);
   styles.addDoc(content);
 
   const body = [...elements(content, 'office:text')][0];

@@ -4,6 +4,7 @@ import { strToU8, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 import { BUNDLED_FONTS, FontRegistry } from './fonts';
 import { importFile, importText } from './import';
+import { importOdg } from './import/odg';
 import { toPt } from './import/odt';
 import { layoutPage, starterTemplate } from './pages';
 
@@ -106,5 +107,68 @@ describe('page templates', () => {
     const box = page.items.find((i) => i.type === 'rect');
     expect(title).toBeTruthy();
     expect(box && box.type === 'rect' && box.y + box.height).toBeCloseTo(595 - 28);
+  });
+});
+
+describe('odg songbook import', () => {
+  const NS =
+    'xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" ' +
+    'xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0" ' +
+    'xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0" xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0" ' +
+    'xmlns:xlink="http://www.w3.org/1999/xlink"';
+  const frame = (x: number, y: number, w: number, h: number, inner: string) =>
+    `<draw:frame svg:x="${x}cm" svg:y="${y}cm" svg:width="${w}cm" svg:height="${h}cm">${inner}</draw:frame>`;
+  const textBox = (t: string) => `<draw:text-box><text:p>${t}</text:p></draw:text-box>`;
+  // Two landscape A4 sheets, two A5 pages each, arranged as a booklet:
+  // sheet 1 = back cover | cover, sheet 2 = song | empty.
+  const odg = zipSync({
+    mimetype: strToU8('application/vnd.oasis.opendocument.graphics'),
+    'styles.xml': strToU8(
+      `<office:document-styles ${NS}><office:automatic-styles><style:page-layout style:name="PM1"><style:page-layout-properties fo:page-width="29.7cm" fo:page-height="21cm"/></style:page-layout></office:automatic-styles></office:document-styles>`,
+    ),
+    'content.xml': strToU8(
+      `<office:document-content ${NS}><office:body><office:drawing>` +
+        `<draw:page draw:name="page1">` +
+        `<draw:line svg:x1="14.85cm" svg:y1="0cm" svg:x2="14.85cm" svg:y2="21cm"><text:p/></draw:line>` +
+        frame(3, 6, 9, 4, textBox('Back cover quote')) +
+        frame(16, 1.5, 12, 2, textBox('SONGBOOK')) +
+        `<draw:custom-shape svg:x="16cm" svg:y="18cm" svg:width="12cm" svg:height="2cm"><draw:enhanced-geometry draw:type="round-rectangle" draw:modifiers="3600"/></draw:custom-shape>` +
+        frame(16.2, 18.3, 3, 1.2, textBox('Name:')) +
+        `</draw:page><draw:page draw:name="page2">` +
+        frame(1, 1, 13, 19, '<draw:object xlink:href="./Object 1"/>') +
+        `</draw:page></office:drawing></office:body></office:document-content>`,
+    ),
+    'Object 1/content.xml': strToU8(
+      `<office:document-content ${NS}><office:automatic-styles><style:style style:name="P1" style:family="paragraph"><style:text-properties fo:font-size="16pt" fo:font-weight="bold"/></style:style></office:automatic-styles>` +
+        `<office:body><office:text><text:p text:style-name="P1">Little song</text:p><text:p/>` +
+        `<text:p><text:s text:c="4"/>Do<text:s text:c="20"/>Sol</text:p>` +
+        `<text:p>Una canzone semplice da cantare insieme</text:p>` +
+        `</office:text></office:body></office:document-content>`,
+    ),
+  });
+
+  it('splits sheets into pages in booklet order', () => {
+    const book = importOdg('My book.odg', odg, fonts);
+    expect(book.title).toBe('My book');
+    expect(book.pageSize).toBe('A5');
+    expect(book.parts.map((p) => `${p.page}:${p.kind}`)).toEqual(['1:page', '2:song', '3:blank', '4:page']);
+    const song = book.parts[1];
+    expect(song.kind === 'song' && song.title).toBe('Little song');
+    expect(song.kind === 'song' && song.chordpro).toMatch(/\[Do\].*\[Sol\]/);
+  });
+
+  it('turns text boxes and rounded rectangles into page elements', () => {
+    const cover = importOdg('b.odg', odg, fonts).parts[0];
+    if (cover.kind !== 'page') throw new Error('expected a page');
+    expect(cover.name).toBe('songbook');
+    expect(cover.doc.elements[0]).toMatchObject({ text: 'SONGBOOK' });
+    // The text box inside the rectangle becomes its label.
+    expect(cover.doc.elements[1]).toMatchObject({ box: 'Name:', height: 57 });
+    expect(cover.doc.elements).toHaveLength(2);
+  });
+
+  it('can read sheets in reading order', () => {
+    const book = importOdg('b.odg', odg, fonts, { booklet: false });
+    expect(book.parts.map((p) => `${p.page}:${p.kind}`)).toEqual(['1:page', '2:page', '3:song', '4:blank']);
   });
 });

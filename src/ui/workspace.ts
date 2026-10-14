@@ -400,7 +400,7 @@ export class TinyWorkspace implements Workspace {
 }
 
 /** Desktop app: pick files anywhere on disk and read them through the backend. */
-export async function readExternalFiles(types = ['odt', 'txt', 'cho', 'chordpro', 'png', 'jpg', 'jpeg', 'ttf', 'otf']): Promise<{ name: string; bytes: Uint8Array }[]> {
+export async function readExternalFiles(types = ['odt', 'odg', 'txt', 'cho', 'chordpro', 'png', 'jpg', 'jpeg', 'ttf', 'otf']): Promise<{ name: string; bytes: Uint8Array }[]> {
   const t = tiny()!;
   const paths = (await t.dialog.openFiles({ types })) ?? [];
   return Promise.all(
