@@ -244,8 +244,11 @@ to the workspace root with `/` separators.
 - All files are loaded into memory when the workspace opens; reads are served from
   memory. A write resolves only after the IndexedDB transaction commits, and **throws** if
   the browser refuses it, so the app never reports a failed save as saved.
-- On the first write of a session the app calls `navigator.storage.persist()`, asking the
-  browser not to evict the data under storage pressure.
+- When it opens, the workspace checks `navigator.storage.persisted()`. If the data is not
+  protected yet, the first write of a session calls `navigator.storage.persist()`, asking
+  the browser not to evict it under storage pressure. While protection is granted the
+  sidebar says "Protected from automatic deletion". The Safari 7-day warning stays: Apple
+  does not document whether persistence exempts a site from it.
 - Earlier versions used `localStorage`, then a database named `narwal-score`; their data
   is moved to `narwal-db` once, and the old storage is removed.
 - Without IndexedDB (some private windows), files are kept in memory only and the sidebar

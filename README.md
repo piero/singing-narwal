@@ -115,6 +115,10 @@ are there at your next visit. They are **lost** if:
 - you use **Safari** and don't open the site for **7 days**;
 - the computer runs out of disk space and the browser needs room.
 
+If the sidebar says **Protected from automatic deletion**, the browser has agreed not to
+delete them when disk space runs low (the last case). Browsers grant this on their own
+terms, often to sites you use regularly.
+
 They also exist only in **that browser, on that computer, at that web address**: another
 browser or device sees none of them. So **Download all (.zip)** regularly; the sidebar
 shows the date of your last backup and warns when something changed since.

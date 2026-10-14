@@ -102,6 +102,10 @@ export class BrowserWorkspace implements Workspace {
   backup: BackupState = { lastChange: 0, lastBackup: 0 };
   /** Called after each change, with the new backup state. */
   onchange?: (b: BackupState) => void;
+  /** Whether the browser has agreed not to clear these files when space runs low. */
+  storageProtected = false;
+  /** Called when the browser grants that protection. */
+  onprotected?: () => void;
   private askedPersist = false;
 
   private constructor(
@@ -127,6 +131,7 @@ export class BrowserWorkspace implements Workspace {
     }
     const ws = new BrowserWorkspace(db, new Map(await idbEntries<Uint8Array>(db, 'files')));
     ws.backup = (await idbGet<BackupState>(db, 'meta', 'backup')) ?? ws.backup;
+    ws.storageProtected = await navigator.storage?.persisted?.().catch(() => false) ?? false;
     return ws;
   }
 
@@ -151,9 +156,16 @@ export class BrowserWorkspace implements Workspace {
     this.onchange?.(this.backup);
     // Ask the browser not to clear these files when space runs low (granted silently or not at all,
     // except Firefox, which asks the user once).
-    if (!this.askedPersist && this.db) {
+    if (!this.askedPersist && this.db && !this.storageProtected) {
       this.askedPersist = true;
-      navigator.storage?.persist?.().catch(() => {});
+      navigator.storage
+        ?.persist?.()
+        .then((granted) => {
+          if (!granted) return;
+          this.storageProtected = true;
+          this.onprotected?.();
+        })
+        .catch(() => {});
     }
   }
 

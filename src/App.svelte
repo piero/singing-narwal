@@ -79,6 +79,7 @@
   // Browser storage, and the backup reminder that goes with it.
   let browserWs: BrowserWorkspace | null = null;
   let backup = $state({ lastChange: 0, lastBackup: 0 });
+  let storageProtected = $state(false);
   /** Folder used last time in this browser, waiting for the user's permission to reopen it. */
   let rememberedFolder = $state<Awaited<ReturnType<typeof BrowserFolderWorkspace.remembered>>>(null);
 
@@ -87,6 +88,8 @@
       browserWs = await BrowserWorkspace.open();
       backup = browserWs.backup;
       browserWs.onchange = (b) => (backup = b);
+      storageProtected = browserWs.storageProtected;
+      browserWs.onprotected = () => (storageProtected = true);
     }
     workspace = browserWs;
   }
@@ -332,6 +335,9 @@
             {t('ws.folderName', { name: workspace.name })}
           {/if}
         </p>
+        {#if workspace instanceof BrowserWorkspace && storageProtected}
+          <p class="note ok" title={t('ws.protectedHelp')}>✓ {t('ws.protected')}</p>
+        {/if}
         {#if workspace.kind === 'browser'}
           <p class="note" class:warn={needsBackup}>
             {#if !backup.lastBackup}
