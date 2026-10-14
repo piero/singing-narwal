@@ -302,6 +302,8 @@
       return { from: path, to: null };
     });
   }
+  // Web-sized copy of assets/narwal-logo.png (the master, also the app icon).
+  const LOGO = import.meta.env.BASE_URL + 'narwal-logo-256.png';
 </script>
 
 {#snippet item(f: string, text: string)}
@@ -315,6 +317,7 @@
 
 <div class="app">
   <aside>
+    <div class="brand"><img src={LOGO} alt="" />{__APP_NAME__}</div>
     <div class="ws">
       {#if ready}
         <div class="ws-name" title={t('ws.title')}>{workspace.kind === 'browser' ? '🌐' : '📁'} {workspace.name}</div>
@@ -405,9 +408,15 @@
       {/key}
     {:else}
       <div class="empty">
+        <img class="logo" src={LOGO} alt="" />
         <h1>{__APP_NAME__}</h1>
         <p>{t('app.tagline')}</p>
         <p>{t('app.pick')}</p>
+        <p class="create">
+          <button onclick={newBook}>+ {t('side.newSongbook')}</button>
+          <button onclick={newPage}>+ {t('side.newPage')}</button>
+          <button onclick={newSong}>+ {t('side.newSong')}</button>
+        </p>
       </div>
     {/if}
   </main>
@@ -449,6 +458,18 @@
     font-size: 14px;
     display: flex;
     flex-direction: column;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: -4px 0 12px;
+    font-size: 16px;
+    font-weight: 700;
+  }
+  .brand img {
+    width: 34px;
+    height: 34px;
   }
   .ws {
     display: flex;
@@ -622,8 +643,27 @@
     padding: 48px;
     color: var(--muted);
   }
+  .empty .logo {
+    width: 160px;
+    height: 160px;
+  }
   .empty h1 {
     color: var(--fg);
+  }
+  .create {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 20px;
+  }
+  .create button {
+    border: none;
+    background: none;
+    padding: 0;
+    color: var(--accent);
+    cursor: pointer;
+  }
+  .create button:hover {
+    text-decoration: underline;
   }
   .error {
     display: flex;

@@ -305,7 +305,7 @@ space. There is no server code and nothing is uploaded: files stay on the user's
 ### Desktop app (TinyJS)
 
 `tinyjs.json` configures the app (its name in `"title"`, which the web build and the CLI
-also read; id `org.narwal.app`), the frontend (`npm run build`,
+also read; id `org.narwal.app`; icon `assets/narwal-logo.png`), the frontend (`npm run build`,
 served from `dist/`) and the backend (`tiny/backend/main.js`, run by txiki.js).
 
 - The launcher loads the page from `file://` in the system WebKit. Local reads with

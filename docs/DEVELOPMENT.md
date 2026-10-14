@@ -94,6 +94,8 @@ src/
 cli/narwal.ts              command line: PDF export and import
 tiny/backend/main.js       TinyJS backend: file access on disk
 public/fonts/              bundled Liberation fonts (also read by the CLI)
+public/narwal-logo-256.png logo for the web page (favicon, sidebar, welcome screen)
+assets/narwal-logo.png     logo master; the desktop app's icon (tinyjs.json "icon")
 examples/                  sample workspace used to seed browser storage (test content)
 docs/                      technical overview and this guide
 ```
@@ -138,6 +140,8 @@ npm test && npm run check && npm run build
   changing them makes users lose their browser data or settings.
 - **Never report a failed save as saved.** Writes must throw on failure; autosaves go
   through `trackSave` so failures reach the error bar.
+- **The logo** has one master, `assets/narwal-logo.png`. After changing it, regenerate
+  the web copy: `sips -Z 256 assets/narwal-logo.png --out public/narwal-logo-256.png`.
 - Match the style of the surrounding code: 2-space indentation, single quotes, short
   comments that explain why rather than what. There is no formatter configured yet.
 

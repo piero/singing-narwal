@@ -1,3 +1,5 @@
+<p align="center"><img src="public/narwal-logo-256.png" alt="" width="160"></p>
+
 # Singing Narwal
 
 Songs with chords, laid out for printing, assembled into songbooks.

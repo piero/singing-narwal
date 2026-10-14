@@ -5,7 +5,7 @@ export type Lang = 'en' | 'it';
 const en = {
   // App
   'app.tagline': 'Songs with chords, laid out for printing, assembled into songbooks.',
-  'app.pick': 'Pick a song or a songbook on the left, or create a new one.',
+  'app.pick': 'Pick a song, songbook or page on the left, or create a new one:',
   'app.loading': 'Loading…',
   'app.fontsError': 'Could not load fonts: {msg}',
   'ws.title': 'Workspace folder',
@@ -198,7 +198,7 @@ export type Key = keyof Dict;
 
 const it: Dict = {
   'app.tagline': 'Canzoni con accordi, impaginate per la stampa e raccolte in canzonieri.',
-  'app.pick': 'Scegli una canzone o un canzoniere a sinistra, oppure creane uno nuovo.',
+  'app.pick': 'Scegli a sinistra una canzone, un canzoniere o una pagina, oppure creane uno nuovo:',
   'app.loading': 'Caricamento…',
   'app.fontsError': 'Impossibile caricare i font: {msg}',
   'ws.title': 'Cartella di lavoro',
