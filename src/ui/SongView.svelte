@@ -5,7 +5,6 @@
   import type { FontRegistry } from '../core/fonts';
   import { impose, PAGE_SIZES, type PageSizeName } from '../core/impose';
   import { DEFAULT_STYLE, layoutSong, type Columns } from '../core/layout';
-  import { renderPdf } from '../core/pdf';
   import { convertNotation, songNotation, transposeSong } from '../core/transform';
   import Preview from './Preview.svelte';
   import VisualEditor from './VisualEditor.svelte';
@@ -119,6 +118,8 @@
   const sheets = $derived(laid ? impose(laid.pages, { kind: songSettings.imposition, foldLine: true }) : []);
 
   async function exportPdf() {
+    // pdf-lib is loaded on the first export, to keep it out of the initial download.
+    const { renderPdf } = await import('../core/pdf');
     const pdf = await renderPdf(sheets, fonts, { title: laid?.title, creator: __APP_NAME__ });
     const base = path.split('/').pop()!.replace(/\.\w+$/, '');
     await saveFile(`${base}.pdf`, pdf, 'application/pdf');

@@ -138,6 +138,8 @@ npm test && npm run check && npm run build
   from there. Internal identifiers use the generic `narwal` (database `narwal-db`,
   storage keys `narwal:…`, app id `org.narwal.app`) and must not change with a rename:
   changing them makes users lose their browser data or settings.
+- **Import `core/pdf` dynamically in the UI** (`await import('../core/pdf')`): pdf-lib
+  is only needed when exporting, so it stays out of the initial download.
 - **Never report a failed save as saved.** Writes must throw on failure; autosaves go
   through `trackSave` so failures reach the error bar.
 - **The logo** has one master, `assets/narwal-logo.png`. After changing it, regenerate

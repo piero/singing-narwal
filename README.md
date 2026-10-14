@@ -45,8 +45,12 @@ The sidebar always shows where the open workspace is.
 
 ### Bring in songs you already have
 
-1. Click **Import…** and choose files, drag them onto the dialog, or paste text.
-2. Check each imported song in the editor: chords may need a nudge where the original was
+1. Click **Import…** and choose files, drag them onto the dialog, or paste text and click
+   **Add pasted text**.
+2. The files are listed under *To import*. Click a song to see its converted text (in
+   ChordPro) and correct it if needed; ✕ leaves a file out.
+3. Click **Done** to copy them into the workspace, or **Cancel** to import nothing.
+4. Check each imported song in the editor: chords may need a nudge where the original was
    aligned by eye, or written in a font other than Times, Arial, Courier or Liberation.
 
 | You have | Formats | What happens |

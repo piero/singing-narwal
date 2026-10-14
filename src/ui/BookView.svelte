@@ -4,7 +4,6 @@
   import { getMeta, parseSong } from '../core/chordpro';
   import type { FontRegistry } from '../core/fonts';
   import { impose, PAGE_SIZES } from '../core/impose';
-  import { renderPdf } from '../core/pdf';
   import { buildSongbook, parseSongbook, serializeSongbook, type BuiltBook, type ContentItem, type Songbook } from '../core/songbook';
   import { serializePage, starterTemplate, type TemplateName } from '../core/pages';
   import { ImageUrls } from './assets.svelte';
@@ -143,6 +142,8 @@
 
   async function exportPdf() {
     if (!built || !book) return;
+    // pdf-lib is loaded on the first export, to keep it out of the initial download.
+    const { renderPdf } = await import('../core/pdf');
     const pdf = await renderPdf(built.sheets, fonts, { title: book.title, creator: __APP_NAME__, loadImage: loader.readBytes });
     await saveFile(`${path.split('/').pop()!.replace(/\.songbook\.ya?ml$/i, '')}.pdf`, pdf, 'application/pdf');
   }
