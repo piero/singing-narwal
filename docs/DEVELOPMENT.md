@@ -64,6 +64,7 @@ src/
     chords.ts              chord parsing (English/Italian), transposition, spelling, formatting
     chordpro.ts            ChordPro reader/writer, one entry per source line (lossless)
     transform.ts           song-wide edits: transpose, convert notation
+    sections.ts            edits on selected lines: sections, breaks, copy/cut/paste
     layout.ts              song layout: line breaking, chord spacing, columns, auto-fit
     pages.ts               non-song pages (.page.yaml): format, layout, starter templates
     songbook.ts            songbook format (.songbook.yaml) and assembly
@@ -81,7 +82,7 @@ src/
     import.test.ts         tests: text, .odt and .odg import
   ui/                      Svelte UI and browser-side services
     SongView.svelte        song editor screen: metadata, chord tools, preview, export
-    VisualEditor.svelte    chords-over-lyrics editor and section toolbar
+    VisualEditor.svelte    chords-over-lyrics editor (wrapping lines), section toolbar, line selection
     BookView.svelte        songbook editor
     PageView.svelte        page (.page.yaml) editor
     ImportDialog.svelte    import of files and pasted text
@@ -181,6 +182,9 @@ like the rest of the project.
 - [x] Song structure: choruses (indented, optional label), chorus repeats, instrumental
       lines, notes, forced column/page breaks, all added from a section toolbar and shown
       as markers in the editor.
+- [x] Long lines wrap in the editor, chords following their letters; whole-line selection
+      to make sections, put breaks before/after (moving an adjacent one), and cut, copy and
+      paste lines with their chords.
 
 **Layout and printing**
 - [x] Automatic layout: one or two columns and text scale (down to 75%) chosen to use the
@@ -217,6 +221,8 @@ like the rest of the project.
 - [x] Rename and delete files, one or many at once, keeping songbooks consistent (the
       confirmation lists what each songbook will lose); save a copy of any file;
       download the workspace, or one songbook with the files it uses, as a `.zip`.
+- [x] Layout for phones and tablets: sidebar as a drawer, one pane at a time (Edit |
+      Preview) when the editor area is narrower than 900px.
 - [x] English and Italian interface; GPL-3.0-or-later.
 
 ### Next

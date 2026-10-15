@@ -402,4 +402,17 @@
     min-height: 0;
     background: var(--canvas);
   }
+  /* Narrow editor area (phones, tablets, small windows): one pane at a time, switched from the top bar. */
+  @container main (max-width: 900px) {
+    .page-view {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .edit-pane {
+      border-right: none;
+    }
+    :global(main:not([data-pane='preview'])) .preview-pane,
+    :global(main[data-pane='preview']) .edit-pane {
+      display: none;
+    }
+  }
 </style>

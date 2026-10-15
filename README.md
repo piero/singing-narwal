@@ -25,6 +25,10 @@ Songs with chords, laid out for printing, assembled into songbooks.
 | **Website in Chrome or Edge** | a folder on your computer that you choose | the same, without installing anything |
 | **Website in Safari or Firefox** | inside the browser, until you download a backup | trying it out, quick edits |
 
+The website also works on phones and tablets: the sidebar opens from ☰, and on narrow
+screens **Edit | Preview** at the top switches between the editor and the printed page.
+Phones and tablets keep files in the browser (see below).
+
 The desktop app and a folder in Chrome/Edge keep your work as ordinary files: you can
 back them up, sync them (iCloud, Dropbox, Drive) and share them like any other folder.
 Files kept inside the browser are easier to lose (see [below](#if-you-work-in-the-browser)).
@@ -74,7 +78,11 @@ imported. A document holding many songs is imported as one song for now.
 2. Type the lyrics. Click above a letter to add a chord, or type it inline like `[Am]`.
    Drag a chord to move it to another letter.
 3. Use the toolbar above the lyrics to mark a **Chorus**, **Verse** or **Bridge**, repeat
-   the chorus, add a note or force a column/page break.
+   the chorus, add a note or force a column/page break. They act on the paragraph with the
+   cursor; to act on exact lines, select them first with Shift+click or Shift+↑/↓ (on a
+   phone: **Select lines**, then tap the first and last line). With lines selected you can
+   also put a break after them, which moves the text across an existing break, and cut,
+   copy and paste them with their chords. Long lines wrap; chords follow their letters.
 4. **Chords: Do Re Mi | C D E** converts the chord names; **Transpose −½ / +½** changes
    the key. Both edit the song and can be undone.
 

@@ -5,7 +5,8 @@
 
 <script lang="ts">
   // Hybrid song editor: one text field per line, with the chords drawn above the
-  // letters they are anchored to.
+  // letters they are anchored to. Long lines wrap; each chord follows its letter onto
+  // the row where the browser placed it (measured on a hidden copy of the field).
   //
   // - Type lyrics as usual: chords stay attached to their letters.
   // - Click above a letter to add a chord; type "[Am]" inline works too.
@@ -14,9 +15,13 @@
   // - Sections (chorus, verse, bridge), chorus repeats, breaks and notes are added
   //   from the toolbar and shown as markers; in the file they are ChordPro
   //   directives such as {start_of_chorus}. Other directives can be typed as "{…}".
+  // - Whole lines can be selected (Shift+click, Shift+↑/↓, or "Select lines" on touch
+  //   screens) to make them a section, put a break around them, or cut/copy/paste them
+  //   with their chords (as ChordPro text).
   import { tick } from 'svelte';
   import { t, type Key } from './i18n.svelte';
   import { parseLyricsLine, parseSong, serializeLine, type ChordAnchor, type SongDoc, type SongLine } from '../core/chordpro';
+  import { breakAround, copyLines, linesToText, removeLines, textToLines, wrapLines } from '../core/sections';
 
   let { doc, onchange, focusRequest }: { doc: SongDoc; onchange: (d: SongDoc) => void; focusRequest?: { line: number; n: number } } = $props();
 
@@ -33,34 +38,110 @@
   }
 
   const CHIP_FONT = 'bold 13px "LiberationSerif-Bold", "Times New Roman", serif';
+  /** Space above each line's first row (the rows' own line height leaves room for chords). */
+  const PAD_TOP = 4;
+  /** Height of the chord band above a row of text. */
+  const CHIP_H = 17;
 
-  /** Chip positions: above their letter, pushed right when they would overlap. */
-  function chipXs(text: string, chords: ChordAnchor[], posOf: (idx: number) => number): number[] {
-    void fontEpoch;
-    const order = chords.map((_, k) => k).sort((a, b) => posOf(a) - posOf(b));
-    const xs: number[] = [];
-    let end = -Infinity;
-    for (const k of order) {
-      const pos = posOf(k);
-      const x = Math.max(xAt(text + ' '.repeat(Math.max(0, pos - text.length)), pos), end);
-      ctx.font = CHIP_FONT;
-      end = x + ctx.measureText(chords[k].chord).width + 6;
-      xs[k] = x;
-    }
-    return xs;
+  /** Measured layout of a lyrics line: rows, and where each chord chip goes. */
+  interface Geo {
+    rows: number;
+    /** Row height. */
+    lh: number;
+    /** Top of the first row's glyphs, within the field. */
+    h: number;
+    chips: { x: number; y: number }[];
   }
 
-  /** Character boundary nearest to x (may be past the end of the text). */
-  function posAt(text: string, x: number): number {
-    ctx.font = FONT;
-    let prev = 0;
-    for (let i = 1; i <= text.length; i++) {
-      const w = ctx.measureText(text.slice(0, i)).width;
-      if (w > x) return x - prev < w - x ? i - 1 : i;
-      prev = w;
+  let mirror: HTMLDivElement | undefined = $state();
+
+  /** Prepare the hidden copy of a field: same width and line height. */
+  function setupMirror(ta: HTMLTextAreaElement) {
+    const m = mirror!;
+    m.style.width = ta.clientWidth + 'px';
+    m.style.lineHeight = getComputedStyle(ta).lineHeight;
+    m.textContent = '';
+    return m;
+  }
+
+  /** Rows of a text in a field, and the glyph top of the first row. */
+  function rowsOf(ta: HTMLTextAreaElement, text: string): { rows: number; lh: number; h: number } {
+    const m = setupMirror(ta);
+    const probe = document.createElement('span');
+    probe.textContent = '\u200b';
+    m.append(probe, text, '\u200b');
+    const lh = parseFloat(m.style.lineHeight) || 34;
+    return { rows: Math.max(1, Math.round(m.offsetHeight / lh)), lh, h: probe.offsetTop };
+  }
+
+  /** Position (left, glyph top) in the field of the character boundary at each `pos`. */
+  function pointsOf(ta: HTMLTextAreaElement, text: string, positions: number[]): { x: number; top: number }[] {
+    const m = setupMirror(ta);
+    const max = Math.max(text.length, ...positions);
+    // A character at every position, even past the end (trailing spaces hang, so the rows don't change).
+    const padded = text + ' '.repeat(max - text.length + 1);
+    const spans = new Map<number, HTMLSpanElement>();
+    let last = 0;
+    for (const pos of [...new Set(positions)].sort((a, b) => a - b)) {
+      if (pos > last) m.append(padded.slice(last, pos));
+      const span = document.createElement('span');
+      span.textContent = padded[pos];
+      m.append(span);
+      spans.set(pos, span);
+      last = pos + 1;
     }
+    m.append(padded.slice(last));
+    return positions.map((pos) => ({ x: spans.get(pos)!.offsetLeft, top: spans.get(pos)!.offsetTop }));
+  }
+
+  /** Layout of a lyrics line: chips above their letters, pushed right when they would overlap. */
+  function measure(ta: HTMLTextAreaElement, text: string, chords: ChordAnchor[], positions: number[]): Geo {
+    const { rows, lh, h } = rowsOf(ta, text);
+    const pts = pointsOf(ta, text, positions);
+    ctx.font = CHIP_FONT;
+    const order = chords.map((_, k) => k).sort((a, b) => pts[a].top - pts[b].top || positions[a] - positions[b]);
+    const chips: Geo['chips'] = [];
+    let rowTop = -Infinity;
+    let end = -Infinity;
+    for (const k of order) {
+      if (pts[k].top !== rowTop) [rowTop, end] = [pts[k].top, -Infinity];
+      const x = Math.max(pts[k].x, end);
+      end = x + ctx.measureText(chords[k].chord).width + 6;
+      chips[k] = { x, y: PAD_TOP + pts[k].top - CHIP_H + 1 };
+    }
+    return { rows, lh, h, chips };
+  }
+
+  /** Character boundary nearest to x on a given row of a field (may be past the end of the text). */
+  function posInRow(ta: HTMLTextAreaElement, text: string, row: number, x: number): number {
+    const { rows, lh, h } = rowsOf(ta, text);
+    const m = setupMirror(ta);
+    const spans: [number, HTMLSpanElement][] = [];
+    let i = 0;
+    for (const ch of text) {
+      const span = document.createElement('span');
+      span.textContent = ch;
+      m.append(span);
+      spans.push([i, span]);
+      i += ch.length;
+    }
+    const rowOf = (s: HTMLSpanElement) => Math.round((s.offsetTop - h) / lh);
+    const onRow = spans.filter(([, s]) => rowOf(s) === row);
+    ctx.font = FONT;
     const space = ctx.measureText(' ').width;
-    return text.length + Math.max(0, Math.round((x - prev) / space));
+    if (!onRow.length) return text.length + Math.max(0, Math.round(x / space));
+    for (const [idx, s] of onRow) if (x < s.offsetLeft + s.offsetWidth / 2) return idx;
+    const [lastIdx, lastSpan] = onRow[onRow.length - 1];
+    const after = lastIdx + (text.codePointAt(lastIdx)! > 0xffff ? 2 : 1);
+    // Past the last letter of the last row: count spaces, as a chord may sit after the text.
+    if (row >= rows - 1) return after + Math.max(0, Math.round((x - lastSpan.offsetLeft - lastSpan.offsetWidth) / space));
+    return after;
+  }
+
+  /** Row under a point (y relative to the field's top), and whether it is in the chord band. */
+  function zoneAt(g: Geo, y: number): { row: number; chords: boolean } {
+    const row = Math.min(g.rows - 1, Math.max(0, Math.floor((y - g.h + CHIP_H) / g.lh)));
+    return { row, chords: y < row * g.lh + g.h + 1 };
   }
 
   /** Focusable element of each line: the text field, or the marker. */
@@ -68,8 +149,39 @@
   /** Line holding the cursor, target of the toolbar actions. */
   let cursor = $state(0);
   let selected: { line: number; idx: number } | null = $state(null);
-  let editing: { line: number; idx: number | null; pos: number; value: string } | null = $state(null);
+  let editing: { line: number; idx: number | null; pos: number; value: string; x: number; y: number } | null = $state(null);
   let drag: { line: number; idx: number; startX: number; pos: number; moved: boolean } | null = $state(null);
+  /** Line whose chord band is under the pointer (to show the add-chord cursor). */
+  let hoverAdd = $state(-1);
+
+  // Layout of each lyrics line, measured after rendering and whenever the width changes.
+  let geo: (Geo | undefined)[] = $state([]);
+  let widthEpoch = $state(0);
+  let editorEl: HTMLDivElement | undefined = $state();
+  $effect(() => {
+    if (!editorEl) return;
+    let w = editorEl.clientWidth;
+    const ro = new ResizeObserver(() => {
+      if (editorEl && editorEl.clientWidth !== w) {
+        w = editorEl.clientWidth;
+        widthEpoch++;
+      }
+    });
+    ro.observe(editorEl);
+    return () => ro.disconnect();
+  });
+  $effect(() => {
+    void fontEpoch;
+    void widthEpoch;
+    if (!mirror) return;
+    const d = drag;
+    geo = doc.lines.map((l, i) => {
+      const ta = inputs[i];
+      if ((l.kind !== 'lyrics' && l.kind !== 'empty') || !(ta instanceof HTMLTextAreaElement)) return undefined;
+      const { text, chords } = lyr(l);
+      return measure(ta, text, chords, chords.map((c, k) => (d && d.line === i && d.idx === k ? d.pos : c.pos)));
+    });
+  });
 
   // Environment (chorus, verse, …) of each line, for visual grouping.
   const envs = $derived.by(() => {
@@ -132,12 +244,13 @@
   }
 
   async function onInput(i: number, e: Event) {
-    const input = e.currentTarget as HTMLInputElement;
+    const input = e.currentTarget as HTMLTextAreaElement;
     const old = lyr(doc.lines[i]);
     const isRaw = doc.lines[i].kind === 'directive' || doc.lines[i].kind === 'comment';
     let value = input.value;
     let caret = input.selectionStart ?? value.length;
     let chords = isRaw ? [] : shiftChords(old.text, value, old.chords);
+    if (/[\r\n]/.test(value)) return splitPasted(i, value, chords, caret);
     // Chords typed inline as [Am] become anchors.
     if (!/^\s*[{#]/.test(value) && /\[[^\]]*\]/.test(value)) {
       const before = parseLyricsLine(value.slice(0, caret)).text.length;
@@ -151,8 +264,27 @@
     setLine(i, makeLine(value, chords));
     if (value !== typed) {
       await tick();
-      (inputs[i] as HTMLInputElement | undefined)?.setSelectionRange(caret, caret);
+      (inputs[i] as HTMLTextAreaElement | undefined)?.setSelectionRange(caret, caret);
     }
+  }
+
+  /** Text with line breaks (pasted or dropped) becomes several lines; [chords] in it are kept. */
+  function splitPasted(i: number, value: string, chords: ChordAnchor[], caret: number) {
+    const withAnchors = [...chords].sort((a, b) => b.pos - a.pos).reduce((s, c) => s.slice(0, c.pos) + `[${c.chord}]` + s.slice(c.pos), value);
+    const anchorsBefore = chords.filter((c) => c.pos <= caret).reduce((n, c) => n + c.chord.length + 2, 0);
+    const parts = withAnchors.split(/\r\n?|\n/);
+    const toLine = (src: string): SongLine => {
+      if (/^\s*[{#]/.test(src)) return makeLine(src, []);
+      const parsed = parseLyricsLine(src);
+      return makeLine(parsed.text, parsed.chords);
+    };
+    const lines = [...doc.lines];
+    lines.splice(i, 1, ...parts.map(toLine));
+    update(lines);
+    // Caret: at the end of what was pasted, on the line it ended on.
+    const before = withAnchors.slice(0, caret + anchorsBefore).split(/\r\n?|\n/);
+    const last = before[before.length - 1];
+    focusLine(i + before.length - 1, /^\s*[{#]/.test(last) ? last.length : parseLyricsLine(last).text.length);
   }
 
   async function focusLine(i: number, caret: number) {
@@ -160,9 +292,9 @@
     const el = inputs[i];
     if (!el) return;
     // Markers with a field (label, note) focus the field.
-    const field = el instanceof HTMLInputElement ? el : el.querySelector('input');
+    const field = el instanceof HTMLTextAreaElement ? el : el.querySelector('input');
     (field ?? el).focus();
-    if (el instanceof HTMLInputElement) {
+    if (el instanceof HTMLTextAreaElement) {
       const c = Math.min(caret, el.value.length);
       el.setSelectionRange(c, c);
     }
@@ -181,7 +313,7 @@
   }
 
   function onKeydown(i: number, e: KeyboardEvent) {
-    const input = e.currentTarget as HTMLInputElement;
+    const input = e.currentTarget as HTMLTextAreaElement;
     const caret = input.selectionStart ?? 0;
     const collapsed = input.selectionStart === input.selectionEnd;
     const l = doc.lines[i];
@@ -231,11 +363,27 @@
         focusLine(i, text.length);
       }
     } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-      const j = visibleNeighbour(i, e.key === 'ArrowUp' ? -1 : 1);
+      const up = e.key === 'ArrowUp';
+      const g = geo[i];
+      let x = 0;
+      if (g) {
+        // Within a wrapped line, the field moves between its own rows.
+        const pt = pointsOf(input, text, [caret])[0];
+        const row = Math.round((pt.top - g.h) / g.lh);
+        if (up ? row > 0 : row < g.rows - 1) return;
+        x = pt.x;
+      }
+      const j = visibleNeighbour(i, up ? -1 : 1);
       if (j < 0) return;
       e.preventDefault();
-      const x = xAt(input.value, caret);
-      focusLine(j, posAt(lyr(doc.lines[j]).text, x));
+      if (e.shiftKey) {
+        sel = { anchor: i, head: j };
+        editorEl?.focus({ preventScroll: true });
+        return;
+      }
+      const target = inputs[j];
+      const tg = geo[j];
+      focusLine(j, target instanceof HTMLTextAreaElement && tg ? posInRow(target, lyr(doc.lines[j]).text, up ? tg.rows - 1 : 0, x) : 0);
     }
   }
 
@@ -401,7 +549,10 @@
       const j = visibleNeighbour(i, e.key === 'ArrowUp' ? -1 : 1);
       if (j < 0) return;
       e.preventDefault();
-      focusLine(j, 0);
+      if (e.shiftKey) {
+        sel = { anchor: i, head: j };
+        editorEl?.focus({ preventScroll: true });
+      } else focusLine(j, 0);
     }
   }
 
@@ -417,21 +568,198 @@
     return '';
   }
 
-  // --- Chords -------------------------------------------------------------
+  // --- Line selection -----------------------------------------------------
 
-  function rowX(e: PointerEvent | MouseEvent, row: HTMLElement) {
-    return e.clientX - row.getBoundingClientRect().left;
+  /** Whole lines selected (anchor: where the selection started), for section, break and clipboard actions. */
+  let sel = $state<{ anchor: number; head: number } | null>(null);
+  /** Touch screens have no Shift key: in this mode, tapping lines selects them. */
+  let selectMode = $state(false);
+  const range = $derived(sel ? ([Math.min(sel.anchor, sel.head), Math.max(sel.anchor, sel.head)] as const) : null);
+  const inRange = (i: number) => !!range && i >= range[0] && i <= range[1];
+  /** Section shared by all the selected lines with content, if any. */
+  const selEnv = $derived.by(() => {
+    if (!range) return '';
+    const kinds = new Set<string>();
+    for (let k = range[0]; k <= range[1]; k++) if (isContent(doc.lines[k])) kinds.add(envs[k]);
+    return kinds.size === 1 ? [...kinds][0] : '';
+  });
+
+  function selectTo(i: number) {
+    sel = { anchor: sel?.anchor ?? (selectMode ? i : at()), head: i };
+    editing = null;
+    selected = null;
+    editorEl?.focus({ preventScroll: true });
   }
 
-  function startAdd(i: number, e: PointerEvent) {
-    if (e.target !== e.currentTarget) return;
+  function clearSel() {
+    sel = null;
+    selectMode = false;
+  }
+
+  /** Shift+click (or a tap in selection mode) selects lines; a plain click clears the selection. */
+  function linePointer(i: number, e: PointerEvent | MouseEvent) {
+    if (e.shiftKey || selectMode) {
+      if ((e.target as HTMLElement).closest('.remove')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.type === 'pointerdown') selectTo(i);
+    } else if (sel && e.type === 'pointerdown') clearSel();
+  }
+
+  /** The selected lines to copy (metadata such as the title stays out). */
+  const selLines = () => copyLines(doc.lines, range![0], range![1]).filter((l) => !(l.kind === 'directive' && META.has(l.name)));
+
+  function deleteSel() {
+    if (!range) return;
+    const r = removeLines(doc.lines, range[0], range[1]);
+    update(r.lines.length ? r.lines : [{ kind: 'empty' }]);
+    clearSel();
+    focusLine(Math.min(r.at, Math.max(0, r.lines.length - 1)), 0);
+  }
+
+  function pasteOverSel(text: string) {
+    if (!range) return;
+    const r = removeLines(doc.lines, range[0], range[1]);
+    const pasted = textToLines(text);
+    const lines = [...r.lines];
+    lines.splice(r.at, 0, ...pasted);
+    update(lines);
+    clearSel();
+    focusLine(r.at + pasted.length - 1, Infinity);
+  }
+
+  /** Copy for the toolbar buttons (keyboard shortcuts use the clipboard event instead). */
+  async function writeClipboard(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.append(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+      editorEl?.focus({ preventScroll: true });
+    }
+  }
+
+  const selFocused = () => !!sel && document.activeElement === editorEl;
+
+  function onCopy(e: ClipboardEvent) {
+    if (!selFocused()) return;
+    e.preventDefault();
+    e.clipboardData?.setData('text/plain', linesToText(selLines()));
+  }
+
+  function onCut(e: ClipboardEvent) {
+    if (!selFocused()) return;
+    onCopy(e);
+    deleteSel();
+  }
+
+  function onPaste(e: ClipboardEvent) {
+    if (!selFocused()) return;
+    e.preventDefault();
+    const text = e.clipboardData?.getData('text/plain');
+    if (text) pasteOverSel(text);
+  }
+
+  /** Lines pasted at the start or end of a line go before or after it, whole. */
+  function fieldPaste(i: number, e: ClipboardEvent) {
+    const text = e.clipboardData?.getData('text/plain') ?? '';
+    if (!/[\r\n]/.test(text)) return;
+    const ta = e.currentTarget as HTMLTextAreaElement;
+    if (ta.selectionStart !== ta.selectionEnd) return;
+    const atStart = ta.selectionStart === 0;
+    const atEnd = ta.selectionStart === ta.value.length;
+    // In the middle of a line, the line is split where the text goes (see splitPasted).
+    if (!atStart && !atEnd) return;
+    e.preventDefault();
+    const pasted = textToLines(text);
+    const lines = [...doc.lines];
+    const empty = doc.lines[i].kind === 'empty';
+    const pos = empty || atStart ? i : i + 1;
+    lines.splice(pos, empty ? 1 : 0, ...pasted);
+    update(lines);
+    focusLine(pos + pasted.length - 1, Infinity);
+  }
+
+  /** Keys while lines are selected (the editor itself has the focus). */
+  function editorKey(e: KeyboardEvent) {
+    if (!sel || e.target !== editorEl) return;
+    if (e.key === 'Escape') {
+      const head = sel.head;
+      clearSel();
+      focusLine(head, 0);
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      const j = visibleNeighbour(sel.head, e.key === 'ArrowUp' ? -1 : 1);
+      if (e.shiftKey) {
+        if (j >= 0) sel = { ...sel, head: j };
+      } else {
+        const target = j >= 0 ? j : sel.head;
+        clearSel();
+        focusLine(target, 0);
+      }
+    } else if (e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault();
+      deleteSel();
+    } else if (e.key.length === 1 && !e.metaKey && !e.ctrlKey) clearSel();
+  }
+
+  function wrapSel(env: string) {
+    if (!range) return;
+    const r = wrapLines(doc.lines, range[0], range[1], env);
+    update(r.lines);
+    clearSel();
+    cursor = r.first;
+    focusLine(r.first, 0);
+  }
+
+  function breakSel(page: boolean, where: 'before' | 'after') {
+    if (!range) return;
+    update(breakAround(doc.lines, range[0], range[1], page ? 'new_page' : 'column_break', where));
+    clearSel();
+  }
+
+  // --- Chords -------------------------------------------------------------
+
+  /** Row and character boundary under a pointer in a lyrics line, and whether it is in a chord band. */
+  function hit(i: number, e: PointerEvent | MouseEvent): { pos: number; chords: boolean } | null {
+    const ta = inputs[i];
+    if (!(ta instanceof HTMLTextAreaElement)) return null;
+    const text = lyr(doc.lines[i]).text;
+    // Measured now: row heights can change on hover (empty lines grow).
+    const r = ta.getBoundingClientRect();
+    const z = zoneAt({ ...rowsOf(ta, text), chips: [] }, e.clientY - r.top);
+    return { pos: posInRow(ta, text, z.row, e.clientX - r.left), chords: z.chords };
+  }
+
+  /** Position of a new or renamed chord's field, from the line's layout. */
+  function chordFieldAt(i: number, pos: number): { x: number; y: number } {
+    const ta = inputs[i];
+    if (!(ta instanceof HTMLTextAreaElement)) return { x: 0, y: 0 };
+    const pt = pointsOf(ta, lyr(doc.lines[i]).text, [pos])[0];
+    return { x: pt.x, y: PAD_TOP + pt.top - CHIP_H + 1 };
+  }
+
+  /** Click in the band above a row of text: add a chord on the letter below. */
+  function lyricDown(i: number, e: PointerEvent) {
+    if ((e.target as HTMLElement).closest('.chip, .chord-input')) return;
+    const h = hit(i, e);
+    if (!h?.chords) return;
     // Keep the browser from moving focus away from the chord field we open.
     e.preventDefault();
-    const l = doc.lines[i];
-    if (l.kind !== 'lyrics' && l.kind !== 'empty') return;
-    const pos = posAt(lyr(l).text, rowX(e, e.currentTarget as HTMLElement));
-    editing = { line: i, idx: null, pos, value: '' };
+    editing = { line: i, idx: null, pos: h.pos, value: '', ...chordFieldAt(i, h.pos) };
     selected = null;
+  }
+
+  function lyricHover(i: number, e: PointerEvent) {
+    if (drag || (e.target as HTMLElement).closest('.chip, .chord-input')) return;
+    const ta = inputs[i];
+    if (!(ta instanceof HTMLTextAreaElement)) return;
+    const inBand = zoneAt({ ...rowsOf(ta, lyr(doc.lines[i]).text), chips: [] }, e.clientY - ta.getBoundingClientRect().top).chords;
+    hoverAdd = inBand ? i : hoverAdd === i ? -1 : hoverAdd;
   }
 
   function commitEdit() {
@@ -465,9 +793,11 @@
 
   function chipMove(e: PointerEvent) {
     if (!drag) return;
-    const row = (e.currentTarget as HTMLElement).parentElement!;
     if (Math.abs(e.clientX - drag.startX) > 3) drag.moved = true;
-    if (drag.moved) drag.pos = posAt(lyr(doc.lines[drag.line]).text, rowX(e, row));
+    if (!drag.moved) return;
+    // The chip is dragged in a chord band: it anchors to the letter below, on any row.
+    const h = hit(drag.line, e);
+    if (h) drag.pos = h.pos;
   }
 
   function chipUp() {
@@ -497,7 +827,7 @@
       focusLine(i, c.pos);
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      editing = { line: i, idx, pos: c.pos, value: c.chord };
+      editing = { line: i, idx, pos: c.pos, value: c.chord, ...(geo[i]?.chips[idx] ?? chordFieldAt(i, c.pos)) };
     } else if (e.key === 'Escape') {
       selected = null;
       focusLine(i, c.pos);
@@ -510,12 +840,20 @@
   }
 </script>
 
-<svelte:document onpointerdowncapture={commitOutside} />
+<svelte:document onpointerdowncapture={commitOutside} oncopy={onCopy} oncut={onCut} onpaste={onPaste} />
 
 <div class="toolbar" role="toolbar" aria-label={t('sec.toolbar')}>
   <span class="group">
     {#each ['chorus', 'verse', 'bridge'] as env (env)}
-      <button class:active={currentEnv === env} class="tinted" style:--k="var(--{env})" title={t(currentEnv === env ? 'sec.unwrapHelp' : 'sec.wrapHelp', { name: t(ENV_LABEL[env]) })} onmousedown={(e) => e.preventDefault()} onclick={() => toggleSection(env)}>{t(ENV_LABEL[env])}</button>
+      {@const active = range ? selEnv === env : currentEnv === env}
+      <button
+        class:active
+        class="tinted"
+        style:--k="var(--{env})"
+        title={range ? t(active ? 'sel.unwrapHelp' : 'sel.wrapHelp', { name: t(ENV_LABEL[env]) }) : t(active ? 'sec.unwrapHelp' : 'sec.wrapHelp', { name: t(ENV_LABEL[env]) })}
+        onmousedown={(e) => e.preventDefault()}
+        onclick={() => (range ? wrapSel(env) : toggleSection(env))}>{t(ENV_LABEL[env])}</button
+      >
     {/each}
   </span>
   <span class="group">
@@ -523,12 +861,27 @@
     <button class="tinted" style:--k="var(--note)" title={t('sec.noteHelp')} onmousedown={(e) => e.preventDefault()} onclick={insertNote}>✎ {t('sec.note')}</button>
   </span>
   <span class="group">
-    <button class="tinted" style:--k="var(--break)" title={t('sec.colbHelp')} onmousedown={(e) => e.preventDefault()} onclick={() => insertBreak(false)}>⇥ {t('sec.colb')}</button>
-    <button class="tinted" style:--k="var(--break)" title={t('sec.pageHelp')} onmousedown={(e) => e.preventDefault()} onclick={() => insertBreak(true)}>⤓ {t('sec.page')}</button>
+    <button class="tinted" style:--k="var(--break)" title={range ? t('sel.beforeHelp') : t('sec.colbHelp')} onmousedown={(e) => e.preventDefault()} onclick={() => (range ? breakSel(false, 'before') : insertBreak(false))}>⇥ {t('sec.colb')}</button>
+    <button class="tinted" style:--k="var(--break)" title={range ? t('sel.beforeHelp') : t('sec.pageHelp')} onmousedown={(e) => e.preventDefault()} onclick={() => (range ? breakSel(true, 'before') : insertBreak(true))}>⤓ {t('sec.page')}</button>
   </span>
+  <span class="group">
+    <button class:active={selectMode || !!sel} title={t('sel.modeHelp')} onmousedown={(e) => e.preventDefault()} onclick={() => (selectMode || sel ? clearSel() : (selectMode = true))}>{t('sel.mode')}</button>
+  </span>
+  {#if range}
+    <span class="group selection-tools">
+      <span class="count">{t('sel.count', { n: range[1] - range[0] + 1 })}</span>
+      <button class="tinted" style:--k="var(--break)" title={t('sel.colbAfterHelp')} onmousedown={(e) => e.preventDefault()} onclick={() => breakSel(false, 'after')}>⇥ {t('sel.colbAfter')}</button>
+      <button class="tinted" style:--k="var(--break)" title={t('sel.pageAfterHelp')} onmousedown={(e) => e.preventDefault()} onclick={() => breakSel(true, 'after')}>⤓ {t('sel.pageAfter')}</button>
+      <button onmousedown={(e) => e.preventDefault()} onclick={async () => { await writeClipboard(linesToText(selLines())); deleteSel(); }}>{t('sel.cut')}</button>
+      <button onmousedown={(e) => e.preventDefault()} onclick={() => writeClipboard(linesToText(selLines()))}>{t('sel.copy')}</button>
+      <button onmousedown={(e) => e.preventDefault()} onclick={deleteSel}>{t('sel.delete')}</button>
+    </span>
+  {/if}
 </div>
 
-<div class="editor">
+<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_static_element_interactions -->
+<div class="editor" class:selecting={selectMode} bind:this={editorEl} tabindex="-1" onkeydown={editorKey}>
+  <div class="mirror" bind:this={mirror} aria-hidden="true"></div>
   {#each doc.lines as l, i (i)}
     {#if !(l.kind === 'directive' && META.has(l.name))}
       {@const v = lyr(l)}
@@ -538,7 +891,10 @@
         class="line {l.kind} env-{envs[i] || 'none'}"
         class:env={envs[i]}
         class:current={cursor === i}
+        class:selected={inRange(i)}
         onfocusin={() => (cursor = i)}
+        onpointerdowncapture={(e) => linePointer(i, e)}
+        onmousedowncapture={(e) => linePointer(i, e)}
       >
         {#if m && l.kind === 'directive'}
           <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -567,19 +923,21 @@
             <button class="remove" title={t('book.remove')} onclick={() => removeMarker(i)}>✕</button>
           </div>
         {:else if l.kind === 'lyrics' || l.kind === 'empty'}
-          {@const xs = chipXs(v.text, v.chords, (k) => (drag && drag.line === i && drag.idx === k ? drag.pos : v.chords[k].pos))}
+          {@const g = geo[i]}
           <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div class="chordrow" onpointerdown={(e) => startAdd(i, e)} onmousedown={(e) => e.target === e.currentTarget && e.preventDefault()} title={t('song.addChord')}>
+          <div class="lyric" class:adding={hoverAdd === i} onpointerdown={(e) => lyricDown(i, e)} onpointermove={(e) => lyricHover(i, e)} onpointerleave={() => hoverAdd === i && (hoverAdd = -1)}>
             {#each v.chords as c, idx (idx)}
+              {@const pt = g?.chips[idx]}
               <button
                 class="chip"
                 class:selected={selected?.line === i && selected?.idx === idx}
                 class:dragging={drag?.line === i && drag?.idx === idx && drag.moved}
-                style="left: {xs[idx]}px"
+                class:unplaced={!pt}
+                style="left: {pt?.x ?? 0}px; top: {pt?.y ?? 0}px"
                 onpointerdown={(e) => chipDown(i, idx, e)}
                 onpointermove={chipMove}
                 onpointerup={chipUp}
-                ondblclick={() => (editing = { line: i, idx, pos: c.pos, value: c.chord })}
+                ondblclick={() => (editing = { line: i, idx, pos: c.pos, value: c.chord, ...(pt ?? chordFieldAt(i, c.pos)) })}
                 onkeydown={(e) => chipKey(i, idx, e)}
                 onblur={() => selected?.line === i && selected?.idx === idx && (selected = null)}
               >{c.chord}</button>
@@ -587,7 +945,7 @@
             {#if editing && editing.line === i}
               <input
                 class="chord-input"
-                style="left: {xAt(v.text + ' '.repeat(Math.max(0, editing.pos - v.text.length)), editing.pos)}px"
+                style="left: {editing.x}px; top: {editing.y}px"
                 bind:value={editing.value}
                 use:autofocus
                 onkeydown={(e) => {
@@ -602,18 +960,32 @@
                 size="5"
               />
             {/if}
+            <textarea
+              class="text"
+              rows={g?.rows ?? 1}
+              bind:this={inputs[i]}
+              value={v.text}
+              oninput={(e) => onInput(i, e)}
+              onkeydown={(e) => onKeydown(i, e)}
+              onpaste={(e) => fieldPaste(i, e)}
+              spellcheck="false"
+              autocapitalize="off"
+              autocomplete="off"
+            ></textarea>
           </div>
-        {/if}
-        {#if !(m && l.kind === 'directive')}
-        <input
-          class="text"
-          bind:this={inputs[i]}
-          value={v.text}
-          oninput={(e) => onInput(i, e)}
-          onkeydown={(e) => onKeydown(i, e)}
-          spellcheck="false"
-          placeholder={l.kind === 'empty' ? '' : undefined}
-        />
+        {:else if !m}
+          <textarea
+            class="text"
+            rows="1"
+            wrap="off"
+            bind:this={inputs[i]}
+            value={v.text}
+            oninput={(e) => onInput(i, e)}
+            onkeydown={(e) => onKeydown(i, e)}
+            spellcheck="false"
+            autocapitalize="off"
+            autocomplete="off"
+          ></textarea>
         {/if}
       </div>
     {/if}
@@ -723,7 +1095,13 @@
   .marker:focus .remove {
     opacity: 1;
   }
+  @media (hover: none) {
+    .marker .remove {
+      opacity: 1;
+    }
+  }
   .editor {
+    position: relative;
     font: 16px 'LiberationSerif-Regular', 'Times New Roman', serif;
     padding: 12px 16px 40px;
   }
@@ -744,22 +1122,30 @@
   .line.env-bridge {
     border-left-color: var(--bridge);
   }
-  .chordrow {
+  /* A lyrics line: chords are drawn in the room the tall rows leave above each row of text. */
+  .lyric {
     position: relative;
-    height: 17px;
+    padding-top: 4px;
+  }
+  .lyric.adding,
+  .lyric.adding .text {
     cursor: copy;
   }
-  .line.empty .chordrow {
-    height: 6px;
-  }
-  .line.empty:hover .chordrow,
-  .line.empty:focus-within .chordrow {
-    height: 17px;
+  /* Hidden copy of a field, to find where the browser wraps the text and places each letter. */
+  .mirror {
+    position: absolute;
+    top: 0;
+    left: 0;
+    visibility: hidden;
+    pointer-events: none;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    word-break: normal;
   }
   .chip,
   .chord-input {
     position: absolute;
-    top: 0;
+    z-index: 1;
     font: bold 13px 'LiberationSerif-Bold', 'Times New Roman', serif;
     line-height: 16px;
     padding: 0 2px;
@@ -780,6 +1166,9 @@
     background: var(--accent);
     color: var(--on-accent);
     outline: none;
+  }
+  .chip.unplaced {
+    visibility: hidden;
   }
   .chip.dragging {
     cursor: grabbing;
@@ -803,6 +1192,66 @@
     background: transparent;
     color: var(--fg);
     outline: none;
+    resize: none;
+    overflow: hidden;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    word-break: normal;
+  }
+  .lyric .text {
+    line-height: 34px;
+  }
+  .line.empty .lyric .text {
+    line-height: 22px;
+  }
+  .line.empty:hover .lyric .text,
+  .line.empty:focus-within .lyric .text {
+    line-height: 34px;
+  }
+  .editor:focus {
+    outline: none;
+  }
+  /* Phones: the section toolbar is one row that scrolls sideways. */
+  @container main (max-width: 600px) {
+    .toolbar {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      scrollbar-width: none;
+      gap: 8px;
+      padding: 6px 12px;
+    }
+    .toolbar::-webkit-scrollbar {
+      display: none;
+    }
+    .toolbar .group {
+      flex: none;
+    }
+    .toolbar button {
+      white-space: nowrap;
+    }
+    .editor {
+      padding: 8px 12px 40px;
+    }
+  }
+  .line.selected,
+  .line.selected:focus-within {
+    background: color-mix(in srgb, var(--accent) 20%, transparent);
+  }
+  /* Selecting on a touch screen: taps go to the lines, not into their fields. */
+  .editor.selecting .text,
+  .editor.selecting .chip,
+  .editor.selecting .marker input {
+    pointer-events: none;
+  }
+  .selection-tools .count {
+    align-self: center;
+    font-weight: 600;
+    color: var(--accent);
+  }
+  .toolbar button:not(.tinted).active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--on-accent);
   }
   .line:focus-within {
     background: var(--line-focus);

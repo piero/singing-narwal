@@ -420,4 +420,29 @@
     min-height: 0;
     background: var(--canvas);
   }
+  /* Narrow editor area (phones, tablets, small windows): one pane at a time, switched from the top bar. */
+  @container main (max-width: 900px) {
+    .book-view {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .edit-pane {
+      border-right: none;
+    }
+    :global(main:not([data-pane='preview'])) .preview-pane,
+    :global(main[data-pane='preview']) .edit-pane {
+      display: none;
+    }
+  }
+  @container main (max-width: 520px) {
+    .grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .grid label {
+      min-width: 0;
+    }
+    .grid select {
+      min-width: 0;
+      max-width: 100%;
+    }
+  }
 </style>

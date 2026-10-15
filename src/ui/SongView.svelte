@@ -46,6 +46,8 @@
   });
 
   // Autosave.
+  /** Phones: artist, key and chord tools are folded under the title. */
+  let showDetails = $state(false);
   const saver = debouncedSaver(600);
   onDestroy(saver.flush);
   $effect(() => {
@@ -131,7 +133,11 @@
 <div class="song-view">
   <section class="edit-pane">
     <div class="meta">
-      <input class="title" placeholder={t('song.title')} value={meta('title')} oninput={(e) => setM('title', e.currentTarget.value)} />
+      <div class="row">
+        <input class="title" placeholder={t('song.title')} value={meta('title')} oninput={(e) => setM('title', e.currentTarget.value)} />
+        <button class="details-toggle" aria-expanded={showDetails} title={t('song.details')} onclick={() => (showDetails = !showDetails)}>{showDetails ? '▴' : '⋯'}</button>
+      </div>
+      <div class="details" class:open={showDetails}>
       <div class="row">
         <input placeholder={t('song.artist')} value={meta('artist')} oninput={(e) => setM('artist', e.currentTarget.value)} />
         <input class="short" placeholder={t('song.key')} value={meta('key')} oninput={(e) => setM('key', e.currentTarget.value)} />
@@ -148,10 +154,11 @@
           <button disabled={!notation} title={t('song.transposeUp')} onclick={() => change(transposeSong(doc, 1), true)}>+½</button>
         </span>
       </div>
+      </div>
       <div class="row tabs">
         <button class:active={mode === 'visual'} onclick={() => (mode = 'visual')}>{t('song.editor')}</button>
         <button class:active={mode === 'source'} onclick={() => (mode = 'source')}>{t('song.source')}</button>
-        <span class="status" title={location}>{status ? status + ' · ' : ''}{location}</span>
+        <span class="status" title={location}>{status}<span class="where">{status ? ' · ' : ''}{location}</span></span>
       </div>
     </div>
     <div class="editor-scroll">
@@ -235,8 +242,23 @@
     color: var(--fg);
   }
   .meta .title {
+    flex: 1;
+    min-width: 0;
     font-size: 20px;
     font-weight: 600;
+  }
+  .details {
+    display: contents;
+  }
+  .details-toggle {
+    display: none;
+    border: 1px solid var(--line);
+    background: var(--bg);
+    color: var(--fg);
+    border-radius: 4px;
+    padding: 4px 10px;
+    font: inherit;
+    cursor: pointer;
   }
   .row {
     display: flex;
@@ -341,5 +363,48 @@
     background: var(--accent);
     border-color: var(--accent);
     color: var(--on-accent);
+  }
+  /* Narrow editor area (phones, tablets, small windows): one pane at a time, switched from the top bar. */
+  @container main (max-width: 900px) {
+    .song-view {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .edit-pane {
+      border-right: none;
+    }
+    :global(main:not([data-pane='preview'])) .preview-pane,
+    :global(main[data-pane='preview']) .edit-pane {
+      display: none;
+    }
+  }
+  /* Phones: the lyrics get the room. Details fold under the title, and the whole pane
+     scrolls, so the header goes away while the section toolbar stays at the top. */
+  @container main (max-width: 600px) {
+    .edit-pane {
+      overflow-y: auto;
+    }
+    .editor-scroll {
+      flex: none;
+      overflow: visible;
+    }
+    .meta {
+      padding: 8px 12px 0;
+      gap: 6px;
+    }
+    .meta .title {
+      font-size: 18px;
+    }
+    .details-toggle {
+      display: block;
+    }
+    .details:not(.open) {
+      display: none;
+    }
+    .status .where {
+      display: none;
+    }
+    .source {
+      min-height: 70vh;
+    }
   }
 </style>

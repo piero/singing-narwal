@@ -8,6 +8,7 @@ import { bookletOrder } from './impose';
 import { convertNotation, songNotation, transposeSong } from './transform';
 import { DEFAULT_STYLE, isInlineChordLine, layoutSong, structure } from './layout';
 import { resolveBookPath, songbookFiles } from './songbook';
+import { breakAround, copyLines, linesToText, removeLines, textToLines, wrapLines } from './sections';
 
 const it_ = (notation: 'italian' | 'english', transpose = 0) => ({ notation, transpose });
 
@@ -178,5 +179,65 @@ describe('songbook files', () => {
   it('resolves paths relative to the songbook', () => {
     expect(resolveBookPath('books/x.songbook.yaml', '../songs/a.cho')).toBe('songs/a.cho');
     expect(resolveBookPath('books/x.songbook.yaml', 'local.cho')).toBe('books/local.cho');
+  });
+});
+
+describe('line selection edits', () => {
+  const song = (t: string) => parseSong(t).lines;
+  const text = (lines: ReturnType<typeof song>) => linesToText(lines).trimEnd();
+  const base = 'A [Do]uno\nB due\nC tre\n\nD quattro';
+
+  it('wraps exactly the selected lines in a section', () => {
+    expect(text(wrapLines(song(base), 1, 2, 'chorus').lines)).toBe('A [Do]uno\n{start_of_chorus}\nB due\nC tre\n{end_of_chorus}\n\nD quattro');
+  });
+
+  it('splits a section around the selection, keeping its label on the first part', () => {
+    const lines = song('{start_of_verse: Strofa}\nA\nB\nC\n{end_of_verse}');
+    expect(text(wrapLines(lines, 2, 2, 'chorus').lines)).toBe(
+      '{start_of_verse: Strofa}\nA\n{end_of_verse}\n{start_of_chorus}\nB\n{end_of_chorus}\n{start_of_verse}\nC\n{end_of_verse}',
+    );
+  });
+
+  it('changes or removes a whole section', () => {
+    const lines = song('{start_of_verse}\nA\nB\n{end_of_verse}');
+    expect(text(wrapLines(lines, 1, 2, 'bridge').lines)).toBe('{start_of_bridge}\nA\nB\n{end_of_bridge}');
+    expect(text(wrapLines(lines, 1, 2, 'verse').lines)).toBe('A\nB');
+  });
+
+  it('absorbs and shrinks sections the selection overlaps', () => {
+    const lines = song('A\n{start_of_verse}\nB\nC\n{end_of_verse}\nD');
+    // A..B: the verse loses B and keeps C
+    expect(text(wrapLines(lines, 0, 2, 'chorus').lines)).toBe('{start_of_chorus}\nA\nB\n{end_of_chorus}\n{start_of_verse}\nC\n{end_of_verse}\nD');
+    // the whole verse and D
+    expect(text(wrapLines(lines, 1, 5, 'chorus').lines)).toBe('A\n{start_of_chorus}\nB\nC\nD\n{end_of_chorus}');
+  });
+
+  it('puts a break before or after the selection, moving an adjacent one', () => {
+    const lines = song('A\n{column_break}\nB\nC');
+    expect(text(breakAround(lines, 2, 3, 'new_page', 'before'))).toBe('A\n{column_break}\n{new_page}\nB\nC');
+    // B..C above the column break: the break moves after them
+    expect(text(breakAround(lines, 2, 2, 'column_break', 'after'))).toBe('A\nB\n{column_break}\nC');
+    // a break before a section's first line goes before the section
+    expect(text(breakAround(song('A\n{start_of_chorus}\nB\n{end_of_chorus}'), 2, 2, 'column_break', 'before'))).toBe('A\n{column_break}\n{start_of_chorus}\nB\n{end_of_chorus}');
+  });
+
+  it('removes lines without leaving half a section', () => {
+    const lines = song('{start_of_chorus}\nA\nB\n{end_of_chorus}\nC');
+    expect(text(removeLines(lines, 0, 1).lines)).toBe('B\nC');
+    expect(text(removeLines(lines, 2, 2).lines)).toBe('{start_of_chorus}\nA\n{end_of_chorus}\nC');
+    expect(removeLines(lines, 2, 2).at).toBe(2);
+  });
+
+  it('copies lines without half-open sections', () => {
+    const lines = song('A\n{start_of_chorus}\nB\nC\n{end_of_chorus}\nD');
+    expect(text(copyLines(lines, 0, 2))).toBe('A\n{start_of_chorus}\nB\n{end_of_chorus}');
+    expect(text(copyLines(lines, 3, 5))).toBe('{start_of_chorus}\nC\n{end_of_chorus}\nD');
+  });
+
+  it('copies lines as ChordPro and pastes them back', () => {
+    const lines = song(base);
+    const copied = linesToText(lines.slice(0, 2));
+    expect(copied).toBe('A [Do]uno\nB due\n');
+    expect(textToLines(copied)).toEqual(lines.slice(0, 2));
   });
 });

@@ -47,6 +47,17 @@
   /** Selection mode, to delete several songs and pages at once. */
   let selecting = $state(false);
   let selected: string[] = $state([]);
+  /** Narrow screens: the sidebar is a drawer, and editors show one pane at a time. */
+  let navOpen = $state(false);
+  let pane: 'edit' | 'preview' = $state('edit');
+  $effect(() => {
+    void current;
+    navOpen = false;
+    pane = 'edit';
+  });
+  $effect(() => {
+    if (importing) navOpen = false;
+  });
   let error = $state('');
   let importing = $state(false);
   let importDialog = $state<{ addFiles: (list: { name: string; bytes: Uint8Array }[]) => Promise<void> }>();
@@ -438,7 +449,9 @@
   }}
 />
 
-<div class="app">
+<div class="app" class:nav-open={navOpen}>
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+  {#if navOpen}<div class="scrim" onclick={() => (navOpen = false)}></div>{/if}
   <aside>
     <div class="brand"><img src={LOGO} alt="" />{__APP_NAME__}</div>
     <div class="ws">
@@ -530,7 +543,17 @@
     </label>
   </aside>
 
-  <main>
+  <main data-pane={pane}>
+    <div class="topbar">
+      <button class="nav" aria-label={t('nav.menu')} aria-expanded={navOpen} onclick={() => (navOpen = true)}>☰</button>
+      <span class="title">{current ? label(current) : __APP_NAME__}</span>
+      {#if current && fonts}
+        <div class="pane-switch" role="group">
+          <button class:on={pane === 'edit'} aria-pressed={pane === 'edit'} onclick={() => (pane = 'edit')}>{t('nav.edit')}</button>
+          <button class:on={pane === 'preview'} aria-pressed={pane === 'preview'} onclick={() => (pane = 'preview')}>{t('nav.preview')}</button>
+        </div>
+      {/if}
+    </div>
     {#if error}<div class="error" role="alert">{error} <button aria-label="✕" onclick={() => (error = '')}>✕</button></div>{/if}
     {#if fonts && current && (isSong(current) || isPage(current))}
       {@const books = usedIn[current] ?? []}
@@ -604,6 +627,7 @@
     display: grid;
     grid-template-columns: 270px 1fr;
     height: 100vh;
+    height: 100dvh;
   }
   aside {
     border-right: 1px solid var(--line);
@@ -740,7 +764,7 @@
   }
   .menu {
     position: fixed;
-    z-index: 20;
+    z-index: 40;
     min-width: 140px;
     background: var(--bg);
     border: 1px solid var(--line);
@@ -795,6 +819,121 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    /* Editors switch to one pane at a time when this is narrow (see their styles). */
+    container: main / inline-size;
+  }
+  .scrim,
+  .topbar,
+  .topbar .nav,
+  .pane-switch {
+    display: none;
+  }
+  .topbar {
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--line);
+    background: var(--sidebar);
+  }
+  .topbar .nav {
+    border: none;
+    background: none;
+    color: var(--fg);
+    font-size: 20px;
+    line-height: 1;
+    padding: 4px 6px;
+    cursor: pointer;
+  }
+  .topbar .title {
+    flex: 1;
+    min-width: 0;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .pane-switch {
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .pane-switch button {
+    border: none;
+    background: var(--bg);
+    color: var(--fg);
+    font: inherit;
+    font-size: 13px;
+    padding: 4px 10px;
+    cursor: pointer;
+  }
+  .pane-switch button.on {
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+  @container main (max-width: 900px) {
+    .topbar,
+    .pane-switch {
+      display: flex;
+    }
+  }
+  /* Phones: the songbooks line stays one line (it scrolls sideways if needed). */
+  @container main (max-width: 600px) {
+    .used-in {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      white-space: nowrap;
+      scrollbar-width: none;
+      padding: 4px 12px;
+    }
+    .used-in.unused {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: block;
+    }
+  }
+  /* Phones and small tablets: the sidebar slides in from the left. */
+  @media (max-width: 900px) {
+    .app {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    aside {
+      position: fixed;
+      z-index: 30;
+      inset: 0 auto 0 0;
+      width: min(300px, 85vw);
+      transform: translateX(-100%);
+      transition: transform 0.2s ease;
+      visibility: hidden;
+    }
+    .app.nav-open aside {
+      transform: none;
+      visibility: visible;
+      box-shadow: 0 0 30px rgba(0, 0, 0, 0.35);
+    }
+    .scrim {
+      display: block;
+      position: fixed;
+      inset: 0;
+      z-index: 29;
+      background: rgba(0, 0, 0, 0.35);
+    }
+    .topbar,
+    .topbar .nav {
+      display: flex;
+    }
+    .empty {
+      padding: 24px 16px;
+    }
+    .empty .logo {
+      width: 110px;
+      height: 110px;
+    }
+  }
+  /* Touch screens have no hover: keep the item menus visible. */
+  @media (hover: none) {
+    .more {
+      opacity: 1;
+    }
   }
   /* The editor takes the height left by the error bar and the songbooks line. */
   main > :global(.song-view),
