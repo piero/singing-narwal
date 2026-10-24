@@ -532,6 +532,19 @@ export function filesFromZip(bytes: Uint8Array): [string, Uint8Array][] {
   return entries.filter(([p]) => isSong(p) || isSongbook(p) || isPage(p) || isImage(p) || isFontFile(p));
 }
 
+/** The example songbook in examples/, bundled into the app, at its paths there. */
+const EXAMPLE = import.meta.glob<string>(['/examples/**/*.cho', '/examples/**/*.yaml'], { query: '?raw', import: 'default', eager: true });
+/** Its images, as data: URLs (examples/images/ only: other images there are source material). */
+const EXAMPLE_IMAGES = import.meta.glob<string>('/examples/images/*.{png,jpg,jpeg}', { query: '?inline', import: 'default', eager: true });
+export const EXAMPLE_BOOK = 'canzoniere.songbook.yaml';
+export function exampleFiles(): [string, Uint8Array][] {
+  const path = (p: string) => p.slice('/examples/'.length);
+  return [
+    ...Object.entries(EXAMPLE).map(([p, text]): [string, Uint8Array] => [path(p), new TextEncoder().encode(text)]),
+    ...Object.entries(EXAMPLE_IMAGES).map(([p, url]): [string, Uint8Array] => [path(p), fromBase64(url.slice(url.indexOf(',') + 1))]),
+  ];
+}
+
 /** The whole workspace as a .zip file. */
 export async function zipWorkspace(ws: Workspace): Promise<Uint8Array> {
   const entries: Record<string, Uint8Array> = {};

@@ -19,6 +19,8 @@
     NoWorkspace,
     TinyWorkspace,
     copyWorkspace,
+    EXAMPLE_BOOK,
+    exampleFiles,
     filesFromZip,
     isPage,
     isSong,
@@ -265,6 +267,18 @@
       notice = t('ws.zipDone', { n: entries.length, name: zip.name });
       return { from: '', to: null };
     });
+  }
+
+  /** Add the example songbook, with its songs and pages, and open it. */
+  async function loadExample() {
+    const entries = exampleFiles();
+    const replaced = entries.filter(([p]) => files.includes(p)).length;
+    if (replaced && !confirm(t('app.exampleReplace', { n: replaced }))) return;
+    await withEditorsClosed(async () => {
+      for (const [p, b] of entries) await workspace.writeBytes(p, b);
+      return { from: '', to: null };
+    });
+    current = EXAMPLE_BOOK;
   }
 
   async function downloadBookZip(path: string) {
@@ -590,6 +604,10 @@
           <button onclick={newBook}>+ {t('side.newSongbook')}</button>
           <button onclick={newPage}>+ {t('side.newPage')}</button>
           <button onclick={newSong}>+ {t('side.newSong')}</button>
+        </p>
+        <p>{t('app.exampleHint')}</p>
+        <p class="create">
+          <button onclick={loadExample}>📖 {t('app.loadExample')}</button>
         </p>
       </div>
     {/if}

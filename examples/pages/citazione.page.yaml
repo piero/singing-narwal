@@ -1,0 +1,16 @@
+elements:
+  - space: fill
+  - text: |-
+      Cercate di lasciare questo mondo
+      un po’ migliore
+      di quanto non l’avete trovato.
+    font: LiberationSerif-Italic
+    size: 16
+    line_height: 2
+    indent: 20
+  - text: – B.-P.
+    font: LiberationSerif-Italic
+    size: 14
+    align: right
+    margin: 16
+  - space: fill

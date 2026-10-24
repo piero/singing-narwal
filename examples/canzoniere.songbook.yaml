@@ -1,0 +1,12 @@
+title: Canzoniere
+page: A5
+imposition: booklet
+notation: italian
+contents:
+  - page: pages/copertina.page.yaml
+  - page: pages/note.page.yaml
+  - toc: Indice
+  - song: songs/strade-di-coraggio.cho
+  - song: songs/aquile-randagie.cho
+  - page: pages/note.page.yaml
+  - page: pages/citazione.page.yaml

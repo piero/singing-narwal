@@ -1,0 +1,7 @@
+elements:
+  - box: Questo spazio è per me…
+    height: fill
+    radius: 36
+    font: LiberationSerif-Italic
+    size: 14
+    align: center

@@ -6,6 +6,9 @@ const en = {
   // App
   'app.tagline': 'Songs with chords, laid out for printing, assembled into songbooks.',
   'app.pick': 'Pick a song, songbook or page on the left, or create a new one:',
+  'app.exampleHint': 'New here? Try an example songbook, with a cover, a table of contents and two songs:',
+  'app.loadExample': 'Load example',
+  'app.exampleReplace': '{n} file(s) with the same name as the example’s will be replaced. Continue?',
   'app.loading': 'Loading…',
   'app.fontsError': 'Could not load fonts: {msg}',
   'ws.title': 'Workspace folder',
@@ -247,6 +250,9 @@ export type Key = keyof Dict;
 const it: Dict = {
   'app.tagline': 'Canzoni con accordi, impaginate per la stampa e raccolte in canzonieri.',
   'app.pick': 'Scegli a sinistra una canzone, un canzoniere o una pagina, oppure creane uno nuovo:',
+  'app.exampleHint': 'Prima volta qui? Prova un canzoniere di esempio, con copertina, indice e due canzoni:',
+  'app.loadExample': 'Carica esempio',
+  'app.exampleReplace': '{n} file con lo stesso nome di quelli dell’esempio verranno sostituiti. Continuare?',
   'app.loading': 'Caricamento…',
   'app.fontsError': 'Impossibile caricare i font: {msg}',
   'ws.title': 'Cartella di lavoro',
