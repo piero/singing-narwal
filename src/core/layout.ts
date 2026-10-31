@@ -6,7 +6,7 @@
 
 import { getMeta, type SongDoc, type ChordAnchor } from './chordpro';
 import { renderChord, spellingForKey, type Notation, type Spelling } from './chords';
-import type { FontRegistry } from './fonts';
+import { fontVariant, type FontRegistry } from './fonts';
 
 export interface TextStyle {
   font: string;
@@ -57,6 +57,22 @@ export const DEFAULT_STYLE: SongStyle = {
   margin: { top: 30, right: 28, bottom: 28, left: 28 },
   minScale: 0.75,
 };
+
+const TEXT_STYLES = ['title', 'subtitle', 'lyrics', 'chords', 'comment', 'label'] as const;
+
+/**
+ * `style` with all text in another font family (keeping bold and italic) and sized
+ * so that the lyrics are `size` points, the other text in proportion.
+ */
+export function withFont(style: SongStyle, fonts: FontRegistry, family: string, size: number): SongStyle {
+  const k = size / style.lyrics.size;
+  const out = { ...style };
+  for (const key of TEXT_STYLES) {
+    const s = style[key];
+    out[key] = { font: fontVariant(fonts, family, /Bold/.test(s.font), /Italic|Oblique/.test(s.font)), size: s.size * k };
+  }
+  return out;
+}
 
 export type Columns = 1 | 2 | 'auto';
 

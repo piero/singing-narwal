@@ -2,9 +2,9 @@
   import { onDestroy } from 'svelte';
   import { debouncedSaver } from './saves';
   import { getMeta, parseSong, serializeSong, setMeta, type SongDoc } from '../core/chordpro';
-  import type { FontRegistry } from '../core/fonts';
+  import { fontFamilies, type FontRegistry } from '../core/fonts';
   import { impose, PAGE_SIZES, type PageSizeName } from '../core/impose';
-  import { DEFAULT_STYLE, layoutSong, type Columns } from '../core/layout';
+  import { DEFAULT_STYLE, layoutSong, withFont, type Columns } from '../core/layout';
   import { convertNotation, songNotation, transposeSong } from '../core/transform';
   import Preview from './Preview.svelte';
   import VisualEditor from './VisualEditor.svelte';
@@ -106,15 +106,17 @@
 
   const notation = $derived(songNotation(doc));
   const columns = $derived((meta('columns') === '1' ? 1 : meta('columns') === '2' ? 2 : 'auto') as Columns);
+  const families = $derived(fontFamilies(fonts));
+  const style = $derived(withFont(DEFAULT_STYLE, fonts, songSettings.font, songSettings.fontSize || DEFAULT_STYLE.lyrics.size));
   const laid = $derived.by(() => {
     if (!doc.lines.length) return null;
     const size = PAGE_SIZES[songSettings.page];
-    return layoutSong(doc, fonts, DEFAULT_STYLE, {
+    return layoutSong(doc, fonts, style, {
       ...size,
       columns,
       notation: 'original',
       transpose: 0,
-      showChords: true,
+      showChords: songSettings.showChords,
     });
   });
   const sheets = $derived(laid ? impose(laid.pages, { kind: songSettings.imposition, foldLine: true }) : []);
@@ -153,6 +155,15 @@
           <button disabled={!notation} title={t('song.transposeDown')} onclick={() => change(transposeSong(doc, -1), true)}>−½</button>
           <button disabled={!notation} title={t('song.transposeUp')} onclick={() => change(transposeSong(doc, 1), true)}>+½</button>
         </span>
+        <button
+          class="toggle"
+          aria-pressed={!songSettings.showChords}
+          title={t('song.chordsToggleHelp')}
+          onclick={() => {
+            songSettings.showChords = !songSettings.showChords;
+            saveSettings();
+          }}>{songSettings.showChords ? t('song.hideChords') : t('song.showChords')}</button
+        >
       </div>
       </div>
       <div class="row tabs">
@@ -196,6 +207,16 @@
           <option value="1">1</option>
           <option value="2">2</option>
         </select>
+      </label>
+      <label>
+        {t('opt.font')}
+        <select bind:value={songSettings.font} onchange={saveSettings}>
+          {#each families as f (f)}<option value={f}>{f}</option>{/each}
+        </select>
+      </label>
+      <label>
+        {t('opt.fontSize')}
+        <input class="size" type="number" step="0.5" min="6" max="20" bind:value={songSettings.fontSize} onchange={saveSettings} />
       </label>
       <button class="primary" onclick={exportPdf} disabled={!laid}>{t('opt.exportPdf')}</button>
     </div>
@@ -329,12 +350,16 @@
     padding: 10px 16px;
     border-bottom: 1px solid var(--line);
   }
+  .toolbar .size {
+    width: 4.5em;
+  }
   .info {
     font-size: 12px;
     color: var(--muted);
     padding: 4px 16px;
   }
   .chord-tools {
+    flex-wrap: wrap;
     gap: 16px;
     font-size: 13px;
     color: var(--muted);
@@ -358,6 +383,14 @@
   }
   .seg button:last-of-type {
     border-radius: 0 5px 5px 0;
+  }
+  .toggle {
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    background: var(--bg);
+    color: var(--fg);
+    padding: 2px 9px;
+    cursor: pointer;
   }
   .seg button.active {
     background: var(--accent);

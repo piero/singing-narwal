@@ -6,7 +6,7 @@ import { parseSong, serializeSong } from './chordpro';
 import { FontRegistry, BUNDLED_FONTS } from './fonts';
 import { bookletOrder } from './impose';
 import { convertNotation, songNotation, transposeSong } from './transform';
-import { DEFAULT_STYLE, isInlineChordLine, layoutSong, structure } from './layout';
+import { DEFAULT_STYLE, isInlineChordLine, layoutSong, structure, withFont } from './layout';
 import { resolveBookPath, songbookFiles } from './songbook';
 import { breakAround, copyLines, linesToText, removeLines, textToLines, wrapLines } from './sections';
 
@@ -133,6 +133,21 @@ describe('layout', () => {
     ];
     const doc = parseSong(`{title: Amazing Grace}\n{artist: John Newton}\n\n${verses.join('\n\n')}\n`);
     expect(layoutSong(doc, fonts, DEFAULT_STYLE, opts).pages.length).toBe(1);
+  });
+
+  it('changes font family and size, keeping bold and italic', () => {
+    const s = withFont(DEFAULT_STYLE, fonts, 'LiberationSans', 13.2);
+    expect(s.lyrics).toEqual({ font: 'LiberationSans-Regular', size: 13.2 });
+    expect(s.chords.font).toBe('LiberationSans-Bold');
+    expect(s.subtitle.font).toBe('LiberationSans-Italic');
+    expect(s.title.size).toBeCloseTo(DEFAULT_STYLE.title.size * 1.2);
+    // Unknown families fall back to the default serif.
+    expect(withFont(DEFAULT_STYLE, fonts, 'Missing', 11).lyrics.font).toBe('LiberationSerif-Regular');
+  });
+
+  it('leaves the chords out when they are hidden', () => {
+    const r = layoutSong(parseSong('{title: T}\nHel[C]lo'), fonts, DEFAULT_STYLE, { ...opts, showChords: false });
+    expect(r.pages[0].items.some((i) => i.type === 'text' && i.role === 'chord')).toBe(false);
   });
 });
 
